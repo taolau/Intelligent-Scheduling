@@ -1,3 +1,6 @@
+import { injectGlobalStyles } from './ui/theme.js';
+injectGlobalStyles();
+
 import { renderCalendar } from './views/calendar.js';
 import { renderConfig } from './views/config.js';
 import { renderAnalysis } from './views/analysis.js';
@@ -15,8 +18,9 @@ function buildNav() {
   nav.innerHTML = '';
   for (const key of Object.keys(views)) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.textContent = views[key].label;
-    b.className = key === current ? 'active' : '';
+    b.className = `btn ${key === current ? 'btn-primary' : 'btn-default'}`;
     b.onclick = () => switchView(key);
     nav.appendChild(b);
   }

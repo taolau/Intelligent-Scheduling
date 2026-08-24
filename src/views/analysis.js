@@ -14,10 +14,12 @@ export async function renderAnalysis(container) {
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;';
   const prev = document.createElement('button'), next = document.createElement('button');
+  prev.type = 'button'; next.type = 'button';
+  prev.className = 'btn btn-default'; next.className = 'btn btn-default';
   prev.textContent = '← 上周'; next.textContent = '下周 →';
   const label = document.createElement('span');
+  label.className = 'week-label';
   label.textContent = `${weekStart} ~ ${getWeekDates(weekStart)[6]}`;
-  label.style.fontWeight = '600';
   bar.append(prev, label, next);
   container.appendChild(bar);
   prev.onclick = () => { weekStart = shift(weekStart, -7); renderAnalysis(container); };

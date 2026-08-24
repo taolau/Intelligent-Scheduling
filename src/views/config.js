@@ -1,8 +1,9 @@
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
+import { field, setError, rowsEditor } from '../ui/fields.js';
 import { loadAll, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
 
 export function renderConfig(container) {
   container.innerHTML = '';
@@ -15,20 +16,21 @@ export function renderConfig(container) {
   const body = document.createElement('div');
   container.appendChild(body);
   renderStaffs(body);
-  tabStaff.onclick = () => { setActive(tabStaff, tabProject); renderStaffs(body); };
-  tabProject.onclick = () => { setActive(tabProject, tabStaff); renderProjects(body); };
+  tabStaff.onclick = () => { setTab(tabStaff, tabProject); renderStaffs(body); };
+  tabProject.onclick = () => { setTab(tabProject, tabStaff); renderProjects(body); };
 }
 
 function btn(text, active = false) {
   const b = document.createElement('button');
+  b.type = 'button';
   b.textContent = text;
-  b.style.cssText = 'padding:8px 14px;border:1px solid #ccc;border-radius:6px;background:' + (active ? '#2563eb' : '#fff') + ';color:' + (active ? '#fff' : '#222') + ';cursor:pointer;';
+  b.className = `btn btn-${active ? 'primary' : 'default'}`;
   return b;
 }
 
-function setActive(on, ...offs) {
-  on.style.background = '#2563eb'; on.style.color = '#fff';
-  offs.forEach(o => { o.style.background = '#fff'; o.style.color = '#222'; });
+function setTab(on, off) {
+  on.className = 'btn btn-primary';
+  off.className = 'btn btn-default';
 }
 
 async function renderStaffs(body) {
@@ -48,9 +50,9 @@ async function renderStaffs(body) {
   body.appendChild(actions);
 
   const table = document.createElement('table');
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;';
+  table.className = 'table';
   const head = ['姓名', '状态', '可胜任项目', '擅长(原因)', '禁忌(原因)', '周疲劳上限', '高强度上限', '操作'];
-  table.innerHTML = '<thead><tr>' + head.map(h => `<th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;white-space:nowrap;">${h}</th>`).join('') + '</tr></thead>';
+  table.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
   const tbody = document.createElement('tbody');
   table.appendChild(tbody);
   for (const s of staffs) {
@@ -58,61 +60,121 @@ async function renderStaffs(body) {
     const pref = s.preferredProjects.map(p => `${p.projectId}${p.reason ? `(${p.reason})` : ''}`).join(', ') || '-';
     const banned = s.bannedProjects.map(b => `${b.projectId}${b.reason ? `(${b.reason})` : ''}`).join(', ') || '-';
     tr.innerHTML = `
-      <td style="padding:8px;border-bottom:1px solid #eee;">${s.name}</td>
-      <td style="padding:8px;">${s.status}</td>
-      <td style="padding:8px;">${s.allowedProjects.join(', ') || '-'}</td>
-      <td style="padding:8px;">${pref}</td>
-      <td style="padding:8px;">${banned}</td>
-      <td style="padding:8px;">${s.maxWeeklyFatigue}</td>
-      <td style="padding:8px;">${s.maxHeavyTaskCount}</td>
-      <td style="padding:8px;"><button data-edit>编辑</button></td>`;
+      <td>${s.name}</td>
+      <td>${s.status}</td>
+      <td>${s.allowedProjects.join(', ') || '-'}</td>
+      <td>${pref}</td>
+      <td>${banned}</td>
+      <td>${s.maxWeeklyFatigue}</td>
+      <td>${s.maxHeavyTaskCount}</td>
+      <td><button type="button" data-edit class="btn btn-default btn-sm">编辑</button></td>`;
     tr.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
     tbody.appendChild(tr);
   }
   body.appendChild(table);
 }
 
-function editStaffDialog(staff) {
+async function editStaffDialog(staff) {
   const target = staff ?? createStaff({});
+  const { projects } = await loadAll();
+  const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
   const body = document.createElement('div');
-  body.innerHTML = `
-    <div style="margin-bottom:8px;">姓名 <input data-k="name" value="${target.name}"></div>
-    <div style="margin-bottom:8px;">状态
-      <select data-k="status">${STAFF_STATUSES.map(s => `<option ${s === target.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
-    </div>
-    <div style="margin-bottom:8px;">可胜任项目ID(逗号分隔) <input data-k="allowed" value="${target.allowedProjects.join(',')}"></div>
-    <div style="margin-bottom:8px;">擅长项目JSON <input data-k="preferred" value="${JSON.stringify(target.preferredProjects)}"></div>
-    <div style="margin-bottom:8px;">禁忌项目JSON <input data-k="banned" value="${JSON.stringify(target.bannedProjects)}"></div>
-    <div style="margin-bottom:8px;">周疲劳上限 <input data-k="maxWeeklyFatigue" type="number" value="${target.maxWeeklyFatigue}"></div>
-    <div style="margin-bottom:8px;">高强度次数上限 <input data-k="maxHeavyTaskCount" type="number" value="${target.maxHeavyTaskCount}"></div>`;
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'input';
+  nameInput.value = target.name;
+  nameInput.placeholder = '请输入姓名';
+  const nameF = field({ label: '姓名', required: true, control: nameInput });
+
+  const statusSel = document.createElement('select');
+  statusSel.className = 'select';
+  for (const s of STAFF_STATUSES) {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    if (s === target.status) o.selected = true;
+    statusSel.appendChild(o);
+  }
+  const statusF = field({ label: '状态', control: statusSel, hint: 'new=新入保护，left=退出保留历史' });
+
+  const allowedSel = document.createElement('select');
+  allowedSel.className = 'select';
+  allowedSel.multiple = true;
+  for (const p of projects) {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    if (target.allowedProjects.includes(p.id)) o.selected = true;
+    allowedSel.appendChild(o);
+  }
+  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '按住 Ctrl 可多选' });
+
+  const preferredEditor = rowsEditor({
+    label: '擅长项目（加分）', addLabel: '＋ 添加擅长项目',
+    cols: [
+      { key: 'projectId', type: 'select', options: projectOptions },
+      { key: 'reason', type: 'text', placeholder: '如：体力好，搬运熟练' },
+    ],
+    initial: target.preferredProjects,
+  });
+
+  const bannedEditor = rowsEditor({
+    label: '禁忌项目（硬性过滤）', addLabel: '＋ 添加禁忌项目',
+    cols: [
+      { key: 'projectId', type: 'select', options: projectOptions },
+      { key: 'reason', type: 'text', placeholder: '如：腰伤，不宜搬重物' },
+    ],
+    initial: target.bannedProjects,
+  });
+
+  const fatigueInput = document.createElement('input');
+  fatigueInput.className = 'input';
+  fatigueInput.type = 'number';
+  fatigueInput.min = 1;
+  fatigueInput.value = target.maxWeeklyFatigue;
+  const fatigueF = field({ label: '周疲劳上限', control: fatigueInput });
+
+  const heavyInput = document.createElement('input');
+  heavyInput.className = 'input';
+  heavyInput.type = 'number';
+  heavyInput.min = 0;
+  heavyInput.value = target.maxHeavyTaskCount;
+  const heavyF = field({ label: '高强度次数上限', control: heavyInput });
+
+  body.append(nameF.wrap, statusF.wrap, allowedF.wrap, preferredEditor.el, bannedEditor.el, fatigueF.wrap, heavyF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-primary';
   saveBtn.textContent = '保存';
-  saveBtn.style.cssText = 'padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;';
   footer.appendChild(saveBtn);
   const modal = openModal({ title: staff ? '编辑人员' : '新增人员', body, footer });
+
   saveBtn.onclick = async () => {
     const draft = createStaff({
       id: target.id,
-      name: body.querySelector('[data-k="name"]').value,
-      status: body.querySelector('[data-k="status"]').value,
-      allowedProjects: body.querySelector('[data-k="allowed"]').value.split(',').filter(Boolean),
-      preferredProjects: safeJson(body.querySelector('[data-k="preferred"]').value, []),
-      bannedProjects: safeJson(body.querySelector('[data-k="banned"]').value, []),
-      maxWeeklyFatigue: Number(body.querySelector('[data-k="maxWeeklyFatigue"]').value),
-      maxHeavyTaskCount: Number(body.querySelector('[data-k="maxHeavyTaskCount"]').value),
+      name: nameInput.value,
+      status: statusSel.value,
+      allowedProjects: [...allowedSel.selectedOptions].map(o => o.value),
+      preferredProjects: preferredEditor.collect(),
+      bannedProjects: bannedEditor.collect(),
+      maxWeeklyFatigue: Number(fatigueInput.value),
+      maxHeavyTaskCount: Number(heavyInput.value),
     });
     const v = validateStaff(draft);
-    if (!v.valid) { showToast(v.errors.join('；'), 'error'); return; }
+    if (!v.valid) {
+      const byField = {};
+      v.errors.forEach(e => { (byField[e.field] ??= []).push(e.msg); });
+      setError(nameF, byField.name?.join('；') || '');
+      setError(fatigueF, byField.maxWeeklyFatigue?.join('；') || '');
+      setError(heavyF, byField.maxHeavyTaskCount?.join('；') || '');
+      if (byField.bannedProjects) showToast(byField.bannedProjects.join('；'), 'error');
+      if (byField.preferredProjects) showToast(byField.preferredProjects.join('；'), 'error');
+      return;
+    }
     await saveStaff(draft);
     modal.close();
     showToast('已保存', 'success');
     renderConfig(document.querySelector('#view'));
   };
-}
-
-function safeJson(text, fallback) {
-  try { return JSON.parse(text || '[]'); } catch { return fallback; }
 }
 
 async function renderProjects(body) {
@@ -127,9 +189,9 @@ async function renderProjects(body) {
   body.appendChild(actions);
 
   const table = document.createElement('table');
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;';
+  table.className = 'table';
   const head = ['名称', '劳累指数', '所需人数', '重复星期', '时段', '启用', '操作'];
-  table.innerHTML = '<thead><tr>' + head.map(h => `<th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;white-space:nowrap;">${h}</th>`).join('') + '</tr></thead>';
+  table.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
   const tbody = document.createElement('tbody');
   table.appendChild(tbody);
   for (const p of projects) {
@@ -137,47 +199,113 @@ async function renderProjects(body) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
     const slots = p.slots.map(s => `${s.label} ${s.startTime}-${s.endTime}`).join('；') || '-';
     tr.innerHTML = `
-      <td style="padding:8px;border-bottom:1px solid #eee;">${p.name}</td>
-      <td style="padding:8px;">${p.fatigueScore}</td>
-      <td style="padding:8px;">${p.requiredCapacity}</td>
-      <td style="padding:8px;">${week}</td>
-      <td style="padding:8px;">${slots}</td>
-      <td style="padding:8px;">${p.active ? '启用' : '停用'}</td>
-      <td style="padding:8px;"><button data-edit>编辑</button></td>`;
+      <td>${p.name}</td>
+      <td>${p.fatigueScore}</td>
+      <td>${p.requiredCapacity}</td>
+      <td>${week}</td>
+      <td>${slots}</td>
+      <td>${p.active ? '启用' : '停用'}</td>
+      <td><button type="button" data-edit class="btn btn-default btn-sm">编辑</button></td>`;
     tr.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
     tbody.appendChild(tr);
   }
   body.appendChild(table);
 }
 
-function editProjectDialog(project) {
+async function editProjectDialog(project) {
   const target = project ?? createProject({});
   const body = document.createElement('div');
-  body.innerHTML = `
-    <div style="margin-bottom:8px;">名称 <input data-k="name" value="${target.name}"></div>
-    <div style="margin-bottom:8px;">劳累指数(1-3) <input data-k="fatigueScore" type="number" value="${target.fatigueScore}"></div>
-    <div style="margin-bottom:8px;">所需人数 <input data-k="requiredCapacity" type="number" value="${target.requiredCapacity}"></div>
-    <div style="margin-bottom:8px;">重复星期(0-6,逗号;空=一次性) <input data-k="weekDays" value="${target.weekDays.join(',')}"></div>
-    <div style="margin-bottom:8px;">时段JSON <input data-k="slots" style="width:90%" value='${JSON.stringify(target.slots)}'></div>
-    <div style="margin-bottom:8px;">启用 <select data-k="active"><option ${target.active ? 'selected' : ''}>1</option><option ${!target.active ? 'selected' : ''}>0</option></select></div>`;
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'input';
+  nameInput.value = target.name;
+  nameInput.placeholder = '请输入任务名';
+  const nameF = field({ label: '名称', required: true, control: nameInput });
+
+  const fatigueSel = document.createElement('select');
+  fatigueSel.className = 'select';
+  for (let i = 1; i <= FATIGUE_MAX; i++) {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = `${i}（${i === 1 ? '轻松' : i === 2 ? '中等' : '高强度'}）`;
+    if (target.fatigueScore === i) o.selected = true;
+    fatigueSel.appendChild(o);
+  }
+  const fatigueF = field({ label: '劳累指数', control: fatigueSel });
+
+  const capInput = document.createElement('input');
+  capInput.className = 'input';
+  capInput.type = 'number';
+  capInput.min = 1;
+  capInput.value = target.requiredCapacity;
+  const capF = field({ label: '所需人数', control: capInput });
+
+  const daysWrap = document.createElement('div');
+  daysWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+  const dayChecks = [];
+  const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
+  for (let d = 0; d < 7; d++) {
+    const lab = document.createElement('label');
+    lab.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:13px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = d;
+    cb.checked = target.weekDays.includes(d);
+    dayChecks.push(cb);
+    lab.append(cb, document.createTextNode(`周${DAYS[d]}`));
+    daysWrap.appendChild(lab);
+  }
+  const daysF = field({ label: '重复星期（全不勾 = 一次性任务）', control: daysWrap });
+
+  const slotEditor = rowsEditor({
+    label: '时段', addLabel: '＋ 添加时段',
+    cols: [
+      { key: 'label', type: 'select', options: SLOT_LABELS.map(s => ({ value: s, label: s })) },
+      { key: 'startTime', type: 'time' },
+      { key: 'endTime', type: 'time' },
+    ],
+    initial: target.slots.map(s => ({ label: s.label, startTime: s.startTime, endTime: s.endTime })),
+  });
+
+  const activeSel = document.createElement('select');
+  activeSel.className = 'select';
+  for (const [val, txt] of [['true', '启用'], ['false', '停用']]) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = txt;
+    if (String(target.active) === val) o.selected = true;
+    activeSel.appendChild(o);
+  }
+  const activeF = field({ label: '启用状态', control: activeSel });
+
+  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, activeF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-primary';
   saveBtn.textContent = '保存';
-  saveBtn.style.cssText = 'padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;';
   footer.appendChild(saveBtn);
   const modal = openModal({ title: project ? '编辑任务' : '新增任务', body, footer });
+
   saveBtn.onclick = async () => {
     const draft = createProject({
       id: target.id,
-      name: body.querySelector('[data-k="name"]').value,
-      fatigueScore: Number(body.querySelector('[data-k="fatigueScore"]').value),
-      requiredCapacity: Number(body.querySelector('[data-k="requiredCapacity"]').value),
-      weekDays: body.querySelector('[data-k="weekDays"]').value.split(',').map(Number).filter(n => !Number.isNaN(n)),
-      slots: safeJson(body.querySelector('[data-k="slots"]').value, []),
-      active: body.querySelector('[data-k="active"]').value === '1',
+      name: nameInput.value,
+      fatigueScore: Number(fatigueSel.value),
+      requiredCapacity: Number(capInput.value),
+      weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
+      slots: slotEditor.collect(),
+      active: activeSel.value === 'true',
     });
     const v = validateProject(draft);
-    if (!v.valid) { showToast(v.errors.join('；'), 'error'); return; }
+    if (!v.valid) {
+      const byField = {};
+      v.errors.forEach(e => { (byField[e.field] ??= []).push(e.msg); });
+      setError(nameF, byField.name?.join('；') || '');
+      setError(fatigueF, byField.fatigueScore?.join('；') || '');
+      setError(capF, byField.requiredCapacity?.join('；') || '');
+      if (byField.slots) showToast(byField.slots.join('；'), 'error');
+      if (byField.weekDays) showToast(byField.weekDays.join('；'), 'error');
+      return;
+    }
     await saveProject(draft);
     modal.close();
     showToast('已保存', 'success');

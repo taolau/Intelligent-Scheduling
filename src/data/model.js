@@ -48,30 +48,29 @@ export function createLeave(fields = {}) {
 }
 
 function problems(checks) {
-  const errors = checks.filter(c => c.cond).map(c => c.msg);
-  return errors;
+  return checks.filter(c => c.cond).map(c => ({ field: c.field, msg: c.msg }));
 }
 
 export function validateProject(p) {
   const errors = problems([
-    { cond: !p.name, msg: '任务名不能为空' },
-    { cond: p.fatigueScore < 1 || p.fatigueScore > FATIGUE_MAX, msg: '劳累指数必须为 1-3' },
-    { cond: p.requiredCapacity < 1, msg: '所需人数必须 >= 1' },
-    { cond: p.weekDays.some(d => d < 0 || d > 6), msg: 'weekDays 必须为 0-6' },
-    { cond: p.slots.some(s => !SLOT_LABELS.includes(s.label)), msg: '时段标签必须在预置集合内' },
-    { cond: p.slots.some(s => !s.startTime || !s.endTime), msg: '时段必须包含起止时间' },
+    { cond: !p.name, field: 'name', msg: '任务名不能为空' },
+    { cond: p.fatigueScore < 1 || p.fatigueScore > FATIGUE_MAX, field: 'fatigueScore', msg: '劳累指数必须为 1-3' },
+    { cond: p.requiredCapacity < 1, field: 'requiredCapacity', msg: '所需人数必须 >= 1' },
+    { cond: p.weekDays.some(d => d < 0 || d > 6), field: 'weekDays', msg: '重复星期必须为 0-6' },
+    { cond: p.slots.some(s => !SLOT_LABELS.includes(s.label)), field: 'slots', msg: '时段标签必须在预置集合内' },
+    { cond: p.slots.some(s => !s.startTime || !s.endTime), field: 'slots', msg: '时段必须包含起止时间' },
   ]);
   return { valid: errors.length === 0, errors };
 }
 
 export function validateStaff(s) {
   const errors = problems([
-    { cond: !s.name, msg: '姓名不能为空' },
-    { cond: !STAFF_STATUSES.includes(s.status), msg: '状态必须为 new/active/left' },
-    { cond: s.maxWeeklyFatigue < 1, msg: '周疲劳上限必须 >= 1' },
-    { cond: s.maxHeavyTaskCount < 0, msg: '高强度次数上限必须 >= 0' },
-    { cond: s.bannedProjects.some(b => !b.projectId), msg: '禁忌项目必须包含 projectId' },
-    { cond: s.preferredProjects.some(p => !p.projectId), msg: '擅长项目必须包含 projectId' },
+    { cond: !s.name, field: 'name', msg: '姓名不能为空' },
+    { cond: !STAFF_STATUSES.includes(s.status), field: 'status', msg: '状态必须为 new/active/left' },
+    { cond: s.maxWeeklyFatigue < 1, field: 'maxWeeklyFatigue', msg: '周疲劳上限必须 >= 1' },
+    { cond: s.maxHeavyTaskCount < 0, field: 'maxHeavyTaskCount', msg: '高强度次数上限必须 >= 0' },
+    { cond: s.bannedProjects.some(b => !b.projectId), field: 'bannedProjects', msg: '禁忌项目必须包含 projectId' },
+    { cond: s.preferredProjects.some(p => !p.projectId), field: 'preferredProjects', msg: '擅长项目必须包含 projectId' },
   ]);
   return { valid: errors.length === 0, errors };
 }

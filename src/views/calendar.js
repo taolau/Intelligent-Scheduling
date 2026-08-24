@@ -38,7 +38,6 @@ export async function renderCalendar(container) {
   bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;';
   const prev = btn('← 上周'), next = btn('下周 →'), label = btn(getWeekLabel(currentWeekStart), false, true);
   const autoBtn = btn('智能排班'), exportBtn = btn('导出考勤'), manualBtn = btn('手动建班次');
-  label.style.background = 'none'; label.style.border = 'none'; label.style.cursor = 'default'; label.style.fontWeight = '600';
   bar.append(prev, next, label, autoBtn, manualBtn, exportBtn);
   container.appendChild(bar);
 
@@ -49,7 +48,7 @@ export async function renderCalendar(container) {
   manualBtn.onclick = () => manualCreate();
 
   const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:70px repeat(7,1fr);gap:6px;font-size:13px;';
+  grid.className = 'cal-grid';
   const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const dates = getWeekDates(currentWeekStart);
   grid.appendChild(corner('时段'));
@@ -59,14 +58,14 @@ export async function renderCalendar(container) {
     grid.appendChild(corner(slotLabel));
     for (const date of dates) {
       const cell = document.createElement('div');
-      cell.style.cssText = 'min-height:90px;border:1px solid #e5e7eb;border-radius:6px;padding:6px;background:#fafafa;';
+      cell.className = 'cal-cell';
       cell.dataset.date = date;
       cell.dataset.slot = slotLabel;
       const cellSchedules = data.schedules.filter(s => s.date === date && s.slotLabel === slotLabel);
       if (cellSchedules.length === 0) {
         const empty = document.createElement('div');
-        empty.textContent = '+';
-        empty.style.cssText = 'text-align:center;color:#9ca3af;cursor:pointer;';
+        empty.className = 'cal-cell empty';
+        empty.textContent = '＋ 手动建班次';
         empty.onclick = () => manualCreate(date, slotLabel);
         cell.appendChild(empty);
       }
@@ -83,31 +82,32 @@ export async function renderCalendar(container) {
 function corner(text) {
   const c = document.createElement('div');
   c.innerHTML = text;
-  c.style.cssText = 'font-weight:600;text-align:center;padding:4px;';
+  c.className = 'cal-corner';
   return c;
 }
 
 function btn(text, active = false, plain = false) {
   const b = document.createElement('button');
+  b.type = 'button';
   b.textContent = text;
-  if (!plain) b.style.cssText = 'padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:' + (active ? '#2563eb' : '#fff') + ';color:' + (active ? '#fff' : '#222') + ';cursor:pointer;';
+  b.className = plain ? 'week-label' : `btn btn-${active ? 'primary' : 'default'}`;
   return b;
 }
 
 function renderScheduleCard(sch) {
   const card = document.createElement('div');
-  card.style.cssText = 'border:1px solid #dbeafe;background:#eff6ff;border-radius:6px;padding:6px;margin-bottom:6px;';
+  card.className = 'sch-card';
   const project = data.projects.find(p => p.id === sch.projectId);
   const title = document.createElement('div');
   title.textContent = `${project?.name ?? sch.projectId}`;
-  title.style.fontWeight = '600';
+  title.className = 'sch-title';
   card.appendChild(title);
   const names = document.createElement('div');
   for (const sid of sch.staffIds) {
     const staff = data.staffs.find(s => s.id === sid);
     const chip = document.createElement('span');
     chip.textContent = staff?.name ?? sid;
-    chip.style.cssText = 'display:inline-block;background:#fff;border:1px solid #bfdbfe;border-radius:10px;padding:1px 8px;margin:2px;cursor:grab;';
+    chip.className = 'staff-chip';
     enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
     chip.onclick = () => staffDialog(staff, sch);
     names.appendChild(chip);
@@ -182,8 +182,9 @@ function staffDialog(staff, sch) {
   body.innerHTML = `<p><strong>${staff.name}</strong>（${staff.status}）</p><p>本周劳累积分：${ctx.weeklyFatigue.get(staff.id) ?? 0}</p>`;
   const footer = document.createElement('div');
   const leaveBtn = document.createElement('button');
+  leaveBtn.type = 'button';
+  leaveBtn.className = 'btn btn-danger';
   leaveBtn.textContent = '标记请假并找替补';
-  leaveBtn.style.cssText = 'padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;';
   footer.appendChild(leaveBtn);
   const modal = openModal({ title: staff.name, body, footer });
   leaveBtn.onclick = async () => {
@@ -221,8 +222,9 @@ function openSubstituteModal(sch, recom) {
     why.style.cssText = 'color:#6b7280;font-size:13px;';
     why.textContent = r.reasons.join('；');
     const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'btn btn-success btn-sm';
     pick.textContent = '选此替补';
-    pick.style.cssText = 'margin-top:6px;padding:6px 12px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;';
     pick.onclick = async () => {
       sch.staffIds = [...sch.staffIds, r.staff.id];
       await saveSchedule(sch);
@@ -238,17 +240,18 @@ function openSubstituteModal(sch, recom) {
 function manualCreate(date, slotLabel) {
   const body = document.createElement('div');
   body.innerHTML = `
-    <div style="margin-bottom:8px;">日期 <input data-k="date" value="${date ?? currentWeekStart}"></div>
+    <div style="margin-bottom:8px;">日期 <input class="input" data-k="date" value="${date ?? currentWeekStart}"></div>
     <div style="margin-bottom:8px;">时段
-      <select data-k="slot">${SLOT_LABELS.map(s => `<option ${s === slotLabel ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <select class="select" data-k="slot">${SLOT_LABELS.map(s => `<option ${s === slotLabel ? 'selected' : ''}>${s}</option>`).join('')}</select>
     </div>
     <div style="margin-bottom:8px;">任务
-      <select data-k="project">${data.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
+      <select class="select" data-k="project">${data.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
     </div>`;
   const footer = document.createElement('div');
   const okBtn = document.createElement('button');
+  okBtn.type = 'button';
+  okBtn.className = 'btn btn-primary';
   okBtn.textContent = '创建';
-  okBtn.style.cssText = 'padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;';
   footer.appendChild(okBtn);
   const modal = openModal({ title: '手动建班次', body, footer });
   okBtn.onclick = async () => {

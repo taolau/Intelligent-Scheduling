@@ -16,7 +16,7 @@ test('validateProject: 非法劳累指数', () => {
   const p = createProject({ name: 'X', fatigueScore: 5 });
   const r = validateProject(p);
   assert.equal(r.valid, false);
-  assert.ok(r.errors.some(e => e.includes('劳累')));
+  assert.ok(r.errors.some(e => e.msg.includes('劳累')));
 });
 
 test('validateProject: 空 slot 标签非法', () => {
