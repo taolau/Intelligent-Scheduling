@@ -22,11 +22,12 @@
 | 框架 | **无框架**，纯原生 ES Modules + 标准 Web API |
 | 构建 | **开发多模块 + 发布单文件**：开发用 Vite dev server（模块化）；发布用 esbuild 打包为 `dist/index.html` 单文件，双击即用 |
 | 外部依赖 | 仅 SheetJS（XLSX），用于 Excel 导入导出 |
-| 存储 | IndexedDB（本地持久化） |
+| 存储 | localStorage（本地持久化） |
 | 日历 | **不引入 FullCalendar**，自建周历网格视图（贴合"按星期几重复"场景） |
 | 拖拽 | HTML5 Drag and Drop API |
 | 图表 | 原生 `<canvas>` 自绘柱状图（疲劳分析） |
 | 弹窗 | 原生 `<dialog>` |
+| UI 样式 | **设计令牌 + 全局样式注入**：`src/ui/theme.js` 导出 `tokens` 并注入全局类（按钮五态/表单/弹窗/表格/toast/周历），视图挂 class 而非内联 cssText。内联样式无法表达 `:hover`/`:focus`/`:active`/`:disabled` 伪类，类体系是交互反馈的前提；样式随 JS 内联进单文件，build.js 不改 |
 
 **架构分层**：算法层（`core/`）为**纯函数、无 DOM 依赖**，独立可测；视图层只负责展示与交互。
 
@@ -39,7 +40,7 @@ Intelligent-Scheduling/
   index.html              # 入口（发布时 = esbuild 打包产物）
   src/
     data/                 # 数据层
-      db.js               #   IndexedDB 封装 + 模型定义
+      db.js               #   localStorage 封装 + 模型定义
       store.js            #   业务数据访问（项目/人员/班次/请假）
     core/                 # 算法层（纯函数，无 DOM）
       expand.js           #   按 weekDays + slots 展开班次
@@ -244,3 +245,5 @@ $$Score = 擅长加分 + 均衡加分 + 间隔保护扣分$$
 ## 7. 变更记录
 
 - 2026-08-24：基于探讨版 PRD 与 Tao 逐项对齐，定稿本 spec。新增：时段级排班、周历网格、人员状态机（new/active/left）、原因解释机制（可解释排班）、请假记录表。
+- 2026-08-24：存储层 IndexedDB → localStorage。原因：file:// 双击打开时 Chromium 的 IndexedDB.open 永不回调导致空白页；localStorage 在 file:// 下可读写且持久，实现「双击即用」。
+- 2026-08-24：UI 打磨定稿（按钮+表单+组件一致化）。新增 `src/ui/theme.js`（设计令牌+全局样式注入）与 `src/ui/fields.js`（结构化表单），编辑弹窗告别裸 JSON 输入、校验错误行内化；`validateProject/validateStaff` 返回结构化 `{field,msg}`。

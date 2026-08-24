@@ -19,7 +19,7 @@ Intelligent-Scheduling/
 | 目录 | 文件 | 职责 | 依赖 |
 | --- | --- | --- | --- |
 | `data/` | `model.js` | 数据模型定义+校验（Project/Staff/Schedule/Leave） | 无 |
-| | `db.js` | IndexedDB 封装（open/CRUD） | 无 |
+| | `db.js` | localStorage 封装（CRUD） | 无 |
 | | `store.js` | 业务门面（CRUD+缓存+JSON备份/恢复） | db |
 | `core/` | `week.js` | 周/日期/时间工具（纯函数） | 无 |
 | | `expand.js` | 按 weekDays+slots 展开班次 | week |
@@ -29,10 +29,12 @@ Intelligent-Scheduling/
 | `views/` | `calendar.js` | 周历网格看板（核心交互） | core+data+ui |
 | | `config.js` | 基础配置页（人员/任务表） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
-| `ui/` | `modal.js` | 弹窗（替补推荐等） | 无 |
+| `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类） | 无 |
+| | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | 无 |
+| | `modal.js` | 弹窗（替补推荐等） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
-| | `toast.js` | 提示 | 无 |
+| | `toast.js` | 提示 | theme |
 | `main.js` | — | 入口装配三视图+导航 | views/* |
 
 ## 关键约定
