@@ -16,7 +16,7 @@ export function buildContext(staffs, schedules, leaves, projectById) {
     }
   }
   const teamAvg = computeTeamAvg(staffs, weeklyFatigue);
-  return { weeklyFatigue, heavyCounts, teamAvg, weekStart, leaves };
+  return { weeklyFatigue, heavyCounts, teamAvg, weekStart, leaves, schedules };
 }
 
 export function recommendSubstitutes(staffs, schedule, projectById, ctx, excludeStaffId, topN = 3) {

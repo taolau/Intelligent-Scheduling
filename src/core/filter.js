@@ -30,7 +30,7 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
 
   if (isOnLeave(staff.id, schedule.date, ctx.leaves)) reasons.push('当日请假');
 
-  const clash = ctx.schedules.find(sch =>
+  const clash = (ctx.schedules ?? []).find(sch =>
     sch.staffIds.includes(staff.id) && hasTimeOverlap(sch, schedule, projectById)
   );
   if (clash) reasons.push(`时段冲突：${projectById[clash.projectId]?.name || '其他任务'}`);
