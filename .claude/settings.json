@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(node -e ' *)",
+      "mcp__playwright__browser_navigate",
+      "Bash(NODE_PATH=/c/Users/wwavv/AppData/Local/npm-cache/_npx/86170c4cd1c5da32/node_modules node test/_verify-single.cjs)",
+      "Bash(NODE_PATH=/c/Users/wwavv/AppData/Local/npm-cache/_npx/86170c4cd1c5da32/node_modules node test/_tmp_zoom_ctrl.js)",
+      "Bash(NODE_PATH=/c/Users/wwavv/AppData/Local/npm-cache/_npx/86170c4cd1c5da32/node_modules node test/_tmp_zoom_settings.js)",
+      "Bash(NODE_PATH=\"C:/Users/wwavv/AppData/Local/npm-cache/_npx/86170c4cd1c5da32/node_modules\" node \"C:/Users/wwavv/AppData/Local/Temp/praise-regression.js\")",
+      "Bash(node test/run-unit.js)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\wwavv\\AppData\\Local\\Temp"
+    ]
+  }
+}
