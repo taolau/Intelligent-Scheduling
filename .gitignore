@@ -2,5 +2,8 @@
 node_modules/
 dist/
 
+# 测试工具输出
+.playwright-mcp/
+
 # 本地配置（机器特定，不共享）
 .claude/settings.local.json
