@@ -1,62 +1,37 @@
-const DB_NAME = 'intelligent-scheduling';
-const DB_VERSION = 1;
+// IndexedDB 在 file:// 协议下 open 永不回调（Chromium 安全策略），导致双击 html 时数据层挂起、页面空白。
+// 改用 localStorage：file:// 下可读写且持久，实现"双击即用"。接口签名不变，上层无感知。
+const PREFIX = 'is_sched:';
 const STORES = ['projects', 'staffs', 'schedules', 'leaves'];
 
-let _db = null;
+function readStore(storeName) {
+  try {
+    const raw = localStorage.getItem(PREFIX + storeName);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
-export function openDB() {
-  return new Promise((resolve, reject) => {
-    if (_db) return resolve(_db);
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      for (const name of STORES) {
-        if (!db.objectStoreNames.contains(name)) {
-          db.createObjectStore(name, { keyPath: 'id' });
-        }
-      }
-    };
-    req.onsuccess = () => { _db = req.result; resolve(_db); };
-    req.onerror = () => reject(req.error);
-  });
+function writeStore(storeName, records) {
+  localStorage.setItem(PREFIX + storeName, JSON.stringify(records));
 }
 
 export async function getAll(storeName) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const req = tx.objectStore(storeName).getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  return readStore(storeName);
 }
 
 export async function put(storeName, record) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).put(record);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  const records = readStore(storeName);
+  const idx = records.findIndex(r => r.id === record.id);
+  if (idx >= 0) records[idx] = record;
+  else records.push(record);
+  writeStore(storeName, records);
 }
 
 export async function remove(storeName, id) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  writeStore(storeName, readStore(storeName).filter(r => r.id !== id));
 }
 
 export async function clearAll() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES, 'readwrite');
-    for (const name of STORES) tx.objectStore(name).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  for (const name of STORES) localStorage.removeItem(PREFIX + name);
 }
