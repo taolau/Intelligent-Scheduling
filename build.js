@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,4 +24,5 @@ const inlineHtml = html.replace(
 
 mkdirSync(join(root, 'dist'), { recursive: true });
 writeFileSync(join(root, 'dist', 'index.html'), inlineHtml, 'utf8');
+rmSync(outfile); // 清理中间 JS 产物，只留单文件
 console.log('已生成 dist/index.html（单文件）');
