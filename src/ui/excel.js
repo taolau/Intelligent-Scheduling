@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { createProject, createStaff } from '../data/model.js';
 import { loadAll, saveProject, saveStaff } from '../data/store.js';
+import { getWeekDates } from '../core/week.js';
 
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -100,14 +101,18 @@ export async function importStaffs(file) {
   }
 }
 
-export async function exportAttendance(schedules, projects, staffs) {
+export async function exportAttendance(schedules, projects, staffs, weekStart) {
   const projectById = Object.fromEntries(projects.map(p => [p.id, p]));
   const staffById = Object.fromEntries(staffs.map(s => [s.id, s]));
-  const rows = schedules.map(sch => {
+  let rows = schedules.map(sch => {
     const p = projectById[sch.projectId];
     const names = (sch.staffIds ?? []).map(id => staffById[id]?.name ?? id).join('、');
     return { 日期: sch.date, 任务: p?.name ?? sch.projectId, 时段: sch.slotLabel, 人员: names };
   });
+  if (weekStart) {
+    const [start, end] = [weekStart, getWeekDates(weekStart)[6]];
+    rows = rows.filter(r => r.日期 >= start && r.日期 <= end);
+  }
   rows.sort((a, b) => String(a.日期).localeCompare(String(b.日期)));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();

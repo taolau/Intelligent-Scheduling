@@ -12,6 +12,10 @@ export function toDateStr(date) {
   return `${y}-${m}-${d}`;
 }
 
+export function todayStr() {
+  return toDateStr(new Date());
+}
+
 export function getWeekStart(dateStr) {
   const date = parseDate(dateStr);
   const dow = date.getDay(); // 0=周日

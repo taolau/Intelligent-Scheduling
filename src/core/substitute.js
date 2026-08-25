@@ -1,9 +1,9 @@
 import { filterCandidate } from './filter.js';
 import { computeTeamAvg, scoreCandidate } from './score.js';
-import { getWeekStart } from './week.js';
+import { getWeekStart, todayStr } from './week.js';
 
 export function buildContext(staffs, schedules, leaves, projectById) {
-  const weekStart = getWeekStart(schedules[0]?.date ?? new Date().toISOString().slice(0, 10));
+  const weekStart = getWeekStart(schedules[0]?.date ?? todayStr());
   const weeklyFatigue = new Map();
   const heavyCounts = new Map();
   for (const sch of schedules) {

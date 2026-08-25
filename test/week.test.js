@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getWeekStart, getWeekDates, isSameDate, timeToMinutes, minutesBetween } from '../src/core/week.js';
+import { getWeekStart, getWeekDates, isSameDate, timeToMinutes, minutesBetween, todayStr } from '../src/core/week.js';
 
 test('getWeekStart: 周三返回当周周一', () => {
   assert.equal(getWeekStart('2026-08-26'), '2026-08-24'); // 2026-08-24 是周一
@@ -27,4 +27,11 @@ test('timeToMinutes', () => {
 
 test('minutesBetween', () => {
   assert.equal(minutesBetween('11:30', '13:00'), 90);
+});
+
+test('todayStr: 返回本地时区今天的 YYYY-MM-DD（非 UTC 偏移）', () => {
+  const d = new Date();
+  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  assert.equal(todayStr(), local);
+  assert.match(todayStr(), /^\d{4}-\d{2}-\d{2}$/);
 });

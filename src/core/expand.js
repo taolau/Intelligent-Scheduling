@@ -1,4 +1,4 @@
-import { getWeekDates } from './week.js';
+import { getWeekDates, parseDate, toDateStr } from './week.js';
 
 export function expandProjectForWeek(project, weekStartStr) {
   if (!project.active) return [];
@@ -22,6 +22,16 @@ export function expandWeek(projects, weekStartStr, createScheduleFn) {
     for (const row of expandProjectForWeek(p, weekStartStr)) {
       out.push(createScheduleFn({ ...row }));
     }
+  }
+  return out;
+}
+
+export function expandWeeks(projects, fromWeekStart, nWeeks, createScheduleFn) {
+  const out = [];
+  for (let i = 0; i < nWeeks; i++) {
+    const d = parseDate(fromWeekStart);
+    d.setDate(d.getDate() + i * 7);
+    out.push(...expandWeek(projects, toDateStr(d), createScheduleFn));
   }
   return out;
 }

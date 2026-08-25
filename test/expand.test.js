@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandProjectForWeek, expandWeek } from '../src/core/expand.js';
+import { expandProjectForWeek, expandWeek, expandWeeks } from '../src/core/expand.js';
 import { createSchedule, createProject } from '../src/data/model.js';
 
 test('expandProjectForWeek: 每周日且两时段 → 本周日展开 2 班次', () => {
@@ -49,4 +49,25 @@ test('expandWeek: 多项目多天展开成完整班次', () => {
   assert.equal(scheds.length, 3);
   assert.ok(scheds.every(s => Array.isArray(s.staffIds) && s.staffIds.length === 0));
   assert.ok(scheds.every(s => typeof s.id === 'string' && s.id));
+});
+
+test('expandWeeks: 连续 2 周展开多周班次空壳', () => {
+  const p = createProject({
+    name: '做饭', weekDays: [0],
+    slots: [
+      { label: '中午', startTime: '11:30', endTime: '13:00' },
+      { label: '晚上', startTime: '17:00', endTime: '19:00' },
+    ],
+  });
+  const scheds = expandWeeks([p], '2026-08-24', 2, createSchedule);
+  assert.equal(scheds.length, 4);
+  assert.deepEqual(scheds.map(s => s.date), ['2026-08-30', '2026-08-30', '2026-09-06', '2026-09-06']);
+  assert.ok(scheds.every(s => Array.isArray(s.staffIds) && s.staffIds.length === 0));
+});
+
+test('expandWeeks: 一次性任务与 inactive 项目不展开', () => {
+  const oneOff = createProject({ name: '临时', weekDays: [], slots: [{ label: '上午', startTime: '08:00', endTime: '09:00' }] });
+  const disabled = createProject({ name: '停用', active: false, weekDays: [1], slots: [{ label: '上午', startTime: '08:00', endTime: '09:00' }] });
+  const scheds = expandWeeks([oneOff, disabled], '2026-08-24', 3, createSchedule);
+  assert.equal(scheds.length, 0);
 });
