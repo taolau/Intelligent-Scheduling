@@ -1,26 +1,27 @@
-# [时间] 2026-08-24
+# [时间] 2026-08-25
 # [定位] 实时上下文：当前 Sprint 进度缓存
 # [作用] 记录"现在"正在做的事。任务完成后需及时清理。
 # [规则] 重点标注 Tao 的进度。
 
 ## 📍 当前状态
-- **智能排班系统**：✅ v1 全部开发完成（13 个任务）— 纯前端无框架，41 单测全绿，dist/index.html 单文件打包通过
-- **存储层修复**：✅ IndexedDB → localStorage（file:// 双击即用）— 详见 pitfalls#5
-- **UI 打磨**：✅ 按钮/表单/组件一致化完成 — theme.js 设计令牌 + 全局样式注入，fields.js 结构化表单，编辑弹窗告别 JSON 输入、校验错误行内提示；file:// 渲染 + CDP 真实点击交互验证通过（新增任务/人员弹窗、周几 chips、时段行增删、多选、行内错误、Escape）
-- **git**：⏳ v1 的 16 提交 + 本次 UI 打磨改动**均未提交/未推送**（Tao 要求晚点统一提交）
-- **浏览器验证**：✅ v1 手测 + UI 打磨 CDP 交互验证通过；拖拽/动画/hover 等纯视觉细节待 Tao 最终浏览器手测
+- **侧边栏导航**：✅ 完成 - 顶部 tab 改左侧可收缩侧栏（浅色/SVG 线框图标/收起 56px 窄条/localStorage 持久化），Tao 拍板「收起成图标窄条+SVG+浅色」
+- **自定义下拉 Select**：✅ 完成 - 新增 src/ui/select.js，单选+多选统一组件（选项打勾/hover/键盘导航/多选标签增删/点击外部关闭）
+- **按钮优化**：✅ 完成 - 按压 scale(.97)/hover 投影/active 内阴影/圆角 8px/字重 500
+- **表单元素+周历+表格**：✅ 完成 - 周几 chips 胶囊化（.day-chip）、输入框 hover/圆角 7px、周历卡片 hover 上浮+虚线空格、表格斑马纹
+- **git**：⏳ 四轮 UI 改动待统一提交（本次 save 后执行）
+- **浏览器验证**：✅ 全部 Playwright 真实点击验证 + 41 单测全绿
 
 ## 🧠 核心决策
-- 技术选型、算法规则、数据模型均已定稿并固化在 `spec.md`，此处不重复
-- 本 Sprint 仍影响行为的落地决策：
-  - 智能排班手动触发（不自动）；请假按"人+某天"整处理
-  - buildContext 返回对象**必须含 schedules**（供 filter 重叠检测），否则运行崩溃
-  - **UI 样式体系**：theme.js 设计令牌 + `injectGlobalStyles()` 注入全局类（`.btn*`/`.field`/`.input`/`.table`/`.modal*`/`.toast*`/`.cal-*`/`.sch-card`/`.staff-chip`），视图挂 class 而非内联 cssText —— 内联样式无法表达 `:hover`/`:focus` 伪类，类体系是交互反馈的前提；样式随 JS 内联进单文件，build.js 不改
+- **UI 设计语言**（长期，已入 spec）：8px 圆角统一、主色 #2563eb、按压/悬停反馈（scale+投影+inset）、圆角胶囊 chips
+- **自定义下拉组件 select.js**：单选/多选统一 API，`el.value` getter/setter 兼容原生 select 读取方式，options 支持字符串或 {value,label}
+- **侧栏体系**：`.sidebar` + `.collapsed` 类切换宽度 208↔56px，CSS 过渡；收起态 label 用 CSS 隐藏，原生 `title` 做 tooltip
+- 智能排班手动触发 / buildContext 含 schedules：长期决策，已在 spec.md，此处不重复
 
 ## ⚠️ 待办与注意
-- [待办] **统一提交**：UI 打磨改动（theme.js/fields.js/model.js/main.js/modal.js/toast.js/config.js/calendar.js/analysis.js/index.html/model.test.js）+ 原有改动（.ai/*、db.js、test/db.test.js、package.json）按 Tao 安排一次性提交
-- [待办] git push 全部提交到远程仓库（用户已要求）
-- [待办] 真实场景试用：录入周日任务（投影/接待/做饭/洗碗等）验证算法手感
-- [注意] 存储介质已换 localStorage：**dev（http）模式录的数据在 file:// 下读不到**（IndexedDB 与 localStorage 不互通），试用期可重录或 JSON 导出/导入
-- [注意] 上午(08:00-12:00)与中午(11:30-13:00)时段重叠，导致智能排班拒绝中午班次——这是**正确的**硬性过滤行为；若实际期望中午可排，需调整时段配置而非改算法
-- [注意] UI 打磨只改了 class 未动 dnd.js，真实拖拽回归手测待做；Playwright 无法完整模拟 dataTransfer，需原生 DragEvent 构造（见 pitfalls#4）；本机无 Chrome，浏览器验证用 Edge headless CDP（见 pitfalls#7）
+- [待办] 统一提交四轮 UI 改动（本次 save 后执行）
+- [待办] 真实场景试用：录入周日任务（投影/接待/做饭/洗碗）验证算法手感
+- [注意] 存储介质已换 localStorage：dev(http) 与 file:// 数据不互通，试用期可重录或 JSON 导出/导入
+- [注意] 上午(08-12)与中午(11:30-13:00)时段重叠 → 智能排班拒绝中午班次是**正确**过滤行为
+- [注意] 拖拽回归手测待做；Playwright 无法模拟 dataTransfer，需原生 DragEvent 构造
+- [注意] 后台 dev server 直接用 `node ./node_modules/vite/bin/vite.js` 跑，勿用 npm run dev+tee（TaskStop 杀不干净会残留孤儿进程占端口）
+- [注意] 本机 Playwright MCP 现已可用，无需 Edge CDP 兜底（原 pitfalls#7 已过时，待更新）

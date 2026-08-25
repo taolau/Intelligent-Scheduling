@@ -53,6 +53,8 @@
 
 ## 7. Playwright MCP 依赖系统 Chrome，本机缺失时改用 Edge headless CDP
 
+> **2026-08-25 更新**：本机环境已变化，Playwright MCP 现在可直接驱动（`browser_navigate`/`browser_click`/`browser_evaluate` 等可用），本条目降级为备用方案。验证 UI 交互优先用 Playwright MCP。
+
 - **报错**：`Chromium distribution 'chrome' is not found at C:\...\chrome.exe`
 - **场景**：需要浏览器手测/交互验证，本机未安装 Google Chrome
 - **根因**：Playwright MCP server 以 channel 'chrome' 启动，强制找系统 Chrome；`npx playwright install chrome` 在中国网络下极慢/易卡；项目未声明 playwright 依赖
@@ -61,3 +63,11 @@
   - 交互驱动：`msedge --headless=new --remote-debugging-port=9222 about:blank` + Node 脚本（Node 24 内置 WebSocket）连 CDP，`Runtime.evaluate` 执行真实点击与取值
   - 模拟按键注意：Escape 等需派发到 `document` 且 `bubbles:true`（KeyboardEvent 构造默认不冒泡，派发到子元素收不到 document 监听器）
 - **启示**：UI 交互验证优先选本机可用浏览器；CDP 的 Runtime.evaluate 可替代 Playwright 的部分交互测试，且能驱动 file:// 页面
+
+## 8. 后台 dev server 残留孤儿进程：TaskStop 杀不掉 vite 子进程，端口被占
+
+- **报错**：`http://localhost:5173` 访问不了；`netstat -ano` 发现 5199 端口仍被旧 vite 进程 LISTENING
+- **场景**：`npm run dev 2>&1 | tee log` 后台运行，之后用 TaskStop 停止
+- **根因**：TaskStop 杀的是 npm/tee 外壳，vite 本体（node 子进程）成孤儿存活继续占端口；旧 server 在 5199、用户访问默认 5173 自然失败
+- **解决**：后台 dev server 直接 `node ./node_modules/vite/bin/vite.js --port 5173 --strictPort`（不经 npm），TaskStop 可干净杀掉；停服务前 `netstat -ano | findstr :端口` 确认无残留，必要时 `Stop-Process -Id <pid> -Force`
+- **启示**：后台长驻进程尽量直接跑可执行文件本体而非包一层 npm/tee；端口不可访问先查 LISTENING 与 PID，再谈重启

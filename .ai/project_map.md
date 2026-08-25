@@ -30,7 +30,8 @@ Intelligent-Scheduling/
 | | `config.js` | 基础配置页（人员/任务表） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类） | 无 |
-| | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | 无 |
+| | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | select |
+| | `select.js` | 自定义下拉：createSelect 单选/多选统一组件，el.value 兼容原生 select 读取 | theme |
 | | `modal.js` | 弹窗（替补推荐等） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |

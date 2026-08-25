@@ -244,6 +244,7 @@ $$Score = 擅长加分 + 均衡加分 + 间隔保护扣分$$
 
 ## 7. 变更记录
 
+- 2026-08-25：UI 四轮打磨。①侧边栏：顶部 tab 改左侧可收缩侧栏（浅色、内联 SVG 线框图标、收起成 56px 图标窄条、localStorage 持久化）。②新增 `src/ui/select.js` 自定义下拉组件：单选/多选统一（选项打勾/键盘导航/多选标签增删/点击外部关闭），替换全部原生 select。③按钮交互反馈：按压 scale、hover 投影、active 内阴影、圆角 8px。④表单元素统一：周几选择胶囊 `.day-chip`、输入框 hover/圆角、周历卡片 hover 上浮+虚线空单元格、表格斑马纹。设计语言定调：8px 圆角、主色 `#2563eb`、按压/悬停反馈。
 - 2026-08-24：基于探讨版 PRD 与 Tao 逐项对齐，定稿本 spec。新增：时段级排班、周历网格、人员状态机（new/active/left）、原因解释机制（可解释排班）、请假记录表。
 - 2026-08-24：存储层 IndexedDB → localStorage。原因：file:// 双击打开时 Chromium 的 IndexedDB.open 永不回调导致空白页；localStorage 在 file:// 下可读写且持久，实现「双击即用」。
 - 2026-08-24：UI 打磨定稿（按钮+表单+组件一致化）。新增 `src/ui/theme.js`（设计令牌+全局样式注入）与 `src/ui/fields.js`（结构化表单），编辑弹窗告别裸 JSON 输入、校验错误行内化；`validateProject/validateStaff` 返回结构化 `{field,msg}`。
