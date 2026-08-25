@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule, createLeave,
-         validateProject, validateStaff, SLOT_LABELS } from '../src/data/model.js';
+         validateProject, validateStaff, SLOT_LABELS, fillSlotTimes } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -23,6 +23,19 @@ test('validateProject: 空 slot 标签非法', () => {
   const p = createProject({ name: 'X', slots: [{ label: '午夜', startTime: '00:00', endTime: '01:00' }] });
   const r = validateProject(p);
   assert.equal(r.valid, false);
+});
+
+test('fillSlotTimes: 空时间回填该时段默认时间', () => {
+  const filled = fillSlotTimes([
+    { label: '上午' },
+    { label: '晚上', startTime: '18:00', endTime: '' },
+    { label: '下午', startTime: '', endTime: '15:00' },
+  ]);
+  assert.deepEqual(filled, [
+    { label: '上午', startTime: '08:00', endTime: '12:00' },
+    { label: '晚上', startTime: '18:00', endTime: '21:00' },
+    { label: '下午', startTime: '13:00', endTime: '15:00' },
+  ]);
 });
 
 test('createStaff 带默认值', () => {

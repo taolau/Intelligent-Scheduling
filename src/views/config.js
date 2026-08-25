@@ -4,7 +4,11 @@ import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
 import { loadAll, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_TIMES, fillSlotTimes } from '../data/model.js';
+
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 15V3m0 0L7 8m5-5l5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
@@ -63,7 +67,8 @@ function activeBadge(on) {
 
 async function renderStaffs(body) {
   body.innerHTML = '';
-  const { staffs } = await loadAll();
+  const { staffs, projects } = await loadAll();
+  const projName = new Map(projects.map(p => [p.id, p.name]));
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
   actions.append(
@@ -81,18 +86,18 @@ async function renderStaffs(body) {
   card.className = 'card';
   const table = document.createElement('table');
   table.className = 'table';
-  const head = ['姓名', '状态', '可胜任项目', '擅长(原因)', '禁忌(原因)', '周疲劳上限', '高强度上限', '操作'];
+  const head = ['姓名', '状态', '可胜任项目', '擅长项目', '不合适项目', '周疲劳上限', '高强度上限', '操作'];
   table.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
   const tbody = document.createElement('tbody');
   table.appendChild(tbody);
   for (const s of staffs) {
     const tr = document.createElement('tr');
-    const pref = s.preferredProjects.map(p => `${p.projectId}${p.reason ? `(${p.reason})` : ''}`).join(', ') || '-';
-    const banned = s.bannedProjects.map(b => `${b.projectId}${b.reason ? `(${b.reason})` : ''}`).join(', ') || '-';
+    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join(' ') || '-';
+    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join(' ') || '-';
     tr.innerHTML = `
       <td><strong>${s.name}</strong></td>
       <td>${statusBadge(s.status)}</td>
-      <td>${s.allowedProjects.join(', ') || '-'}</td>
+      <td>${s.allowedProjects.map(id => projName.get(id) ?? id).join(', ') || '-'}</td>
       <td>${pref}</td>
       <td>${banned}</td>
       <td>${s.maxWeeklyFatigue}</td>
@@ -117,11 +122,16 @@ async function editStaffDialog(staff) {
   nameInput.placeholder = '请输入姓名';
   const nameF = field({ label: '姓名', required: true, control: nameInput });
 
+  const STATUS_META = {
+    new: { label: '新入', desc: '新入保护：不参与高强度' },
+    active: { label: '活跃', desc: '正常参与排班' },
+    left: { label: '已退出', desc: '保留历史，不再参与' },
+  };
   const statusSel = createSelect({
-    options: STAFF_STATUSES.map((s) => ({ value: s, label: s })),
+    options: STAFF_STATUSES.map((s) => ({ value: s, label: STATUS_META[s].label, desc: STATUS_META[s].desc })),
     value: target.status,
   });
-  const statusF = field({ label: '状态', control: statusSel, hint: 'new=新入保护，left=退出保留历史' });
+  const statusF = field({ label: '状态', control: statusSel });
 
   const allowedSel = createSelect({
     multiple: true,
@@ -141,7 +151,7 @@ async function editStaffDialog(staff) {
   });
 
   const bannedEditor = rowsEditor({
-    label: '禁忌项目（硬性过滤）', addLabel: '＋ 添加禁忌项目',
+    label: '不合适项目（硬性过滤）', addLabel: '＋ 添加不合适项目',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：腰伤，不宜搬重物' },
@@ -284,14 +294,16 @@ async function editProjectDialog(project) {
   }
   const daysF = field({ label: '重复星期（全不勾 = 一次性任务）', control: daysWrap });
 
+  const slotDefaults = Object.fromEntries(SLOT_LABELS.map(l => {
+    const [start, end] = (DEFAULT_TIMES[l] ?? '08:00-12:00').split('-');
+    return [l, { start, end }];
+  }));
   const slotEditor = rowsEditor({
     label: '时段', addLabel: '＋ 添加时段',
     cols: [
-      { key: 'label', type: 'select', options: SLOT_LABELS.map(s => ({ value: s, label: s })) },
-      { key: 'startTime', type: 'time' },
-      { key: 'endTime', type: 'time' },
+      { key: 'slot', type: 'timeRange', options: SLOT_LABELS, defaults: slotDefaults },
     ],
-    initial: target.slots.map(s => ({ label: s.label, startTime: s.startTime, endTime: s.endTime })),
+    initial: target.slots.map(s => ({ slot: { label: s.label, startTime: s.startTime, endTime: s.endTime } })),
   });
 
   const activeSel = createSelect({
@@ -316,7 +328,7 @@ async function editProjectDialog(project) {
       fatigueScore: Number(fatigueSel.value),
       requiredCapacity: Number(capInput.value),
       weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
-      slots: slotEditor.collect(),
+      slots: fillSlotTimes(slotEditor.collect()),
       active: activeSel.value === 'true',
     });
     const v = validateProject(draft);

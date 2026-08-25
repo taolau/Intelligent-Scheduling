@@ -34,7 +34,7 @@ export async function exportProjects() {
 
 export async function exportStaffs() {
   const { staffs } = await loadAll();
-  const aoa = [['id', 'name', '可胜任项目(逗号)', '擅长JSON', '禁忌JSON', '周疲劳上限', '高强度次数上限', '状态'], ...staffs.map(s => [
+  const aoa = [['id', 'name', '可胜任项目(逗号)', '擅长JSON', '不合适JSON', '周疲劳上限', '高强度次数上限', '状态'], ...staffs.map(s => [
     s.id, s.name, (s.allowedProjects ?? []).join(','),
     JSON.stringify(s.preferredProjects ?? []),
     JSON.stringify(s.bannedProjects ?? []),
@@ -88,7 +88,7 @@ export async function importStaffs(file) {
         name: String(r.name ?? ''),
         allowedProjects: String(r['可胜任项目(逗号)'] ?? '').split(',').filter(Boolean),
         preferredProjects: parseJsonCell(r['擅长JSON'], []),
-        bannedProjects: parseJsonCell(r['禁忌JSON'], []),
+        bannedProjects: parseJsonCell(r['不合适JSON'], []),
         maxWeeklyFatigue: Number(r['周疲劳上限']) || 6,
         maxHeavyTaskCount: Number(r['高强度次数上限']) || 1,
         status: r['状态'] || 'active',

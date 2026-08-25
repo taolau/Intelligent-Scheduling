@@ -9,7 +9,7 @@ function toStr(v) {
 }
 
 function normalize(options) {
-  return options.map((o) => (typeof o === 'string' ? { value: o, label: o } : { value: String(o.value), label: o.label }));
+  return options.map((o) => (typeof o === 'string' ? { value: o, label: o } : { value: String(o.value), label: o.label, desc: o.desc }));
 }
 
 export function createSelect({ options = [], value, multiple = false, placeholder = '请选择' }) {
@@ -119,6 +119,12 @@ export function createSelect({ options = [], value, multiple = false, placeholde
       lab.className = 'sel-opt-label';
       lab.textContent = o.label;
       opt.append(check, lab);
+      if (o.desc) {
+        const d = document.createElement('span');
+        d.className = 'sel-opt-desc';
+        d.textContent = o.desc;
+        opt.appendChild(d);
+      }
       opt.onclick = (e) => {
         e.stopPropagation();
         choose(i);

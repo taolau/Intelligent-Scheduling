@@ -89,8 +89,34 @@ const css = `
 .sel-check { flex-shrink:0; width:14px; text-align:center; color:#7c3aed; font-size:12px;
   visibility:hidden; }
 .sel-opt.selected .sel-check { visibility:visible; }
+.sel-opt-desc { margin-left:auto; font-size:12px; color:#9ca3af; }
 .sel-empty { padding:10px; color:#9ca3af; font-size:13px; text-align:center; }
 @keyframes selIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+/* ===== 时间范围 ===== */
+.tr { position:relative; }
+.tr-trigger { display:flex; align-items:center; gap:8px; width:100%; min-height:38px; padding:8px 10px;
+  border:1px solid #d1d5db; border-radius:6px; background:#fff; font-size:14px; color:#222;
+  font-family:inherit; text-align:left; cursor:pointer; transition:border-color .15s,box-shadow .15s; }
+.tr-trigger:hover { border-color:#9ca3af; }
+.tr.open .tr-trigger { border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.18); }
+.tr-value { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tr-value.placeholder { color:#9ca3af; }
+.tr-chevron { flex-shrink:0; display:inline-flex; color:#6b7280; transition:transform .15s; }
+.tr-chevron svg { width:16px; height:16px; }
+.tr.open .tr-chevron { transform:rotate(180deg); }
+.tr-panel { display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:1050;
+  background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.12);
+  padding:10px; flex-direction:column; gap:10px; }
+.tr.open .tr-panel { display:flex; }
+.tr-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.tr-chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:4px 12px; font-size:13px;
+  color:#374151; cursor:pointer; transition:border-color .15s,background-color .15s,color .15s; }
+.tr-chip:hover { border-color:#7c3aed; color:#7c3aed; }
+.tr-chip.on { background:#7c3aed; border-color:#7c3aed; color:#fff; }
+.tr-times { display:flex; align-items:center; gap:8px; }
+.tr-times .input { flex:1; min-width:0; }
+.tr-times span { color:#9ca3af; flex-shrink:0; }
 
 /* ===== 周几选择胶囊 ===== */
 .day-chip { display:inline-flex; align-items:center; cursor:pointer; padding:6px 14px;
@@ -110,6 +136,12 @@ const css = `
 .table tbody tr:nth-child(even) { background:#fcfcfd; }
 .table tbody tr:hover { background:#f1f5f9; }
 .table tbody tr:last-child td { border-bottom:none; }
+
+/* ===== 项目 tag ===== */
+.tag { display:inline-flex; align-items:center; background:#f5f3ff; color:#7c3aed;
+  border:1px solid #ede9fe; border-radius:10px; padding:1px 8px; margin:2px 2px 2px 0;
+  font-size:12px; line-height:1.6; cursor:default; }
+.tag.tag-danger { background:#fef2f2; color:#b91c1c; border-color:#fee2e2; }
 
 /* ===== 弹窗 ===== */
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center;
