@@ -155,6 +155,28 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     if (it) it.scrollIntoView({ block: 'nearest' });
   }
 
+  function positionPanel() {
+    const r = trigger.getBoundingClientRect();
+    const panelH = panel.offsetHeight || 224;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const spaceAbove = r.top;
+    let top = r.bottom + 4;
+    if (spaceBelow < panelH + 8 && spaceAbove > spaceBelow) {
+      top = Math.max(8, r.top - panelH - 4);
+    }
+    panel.style.position = 'fixed';
+    panel.style.top = `${top}px`;
+    panel.style.left = `${r.left}px`;
+    panel.style.width = `${r.width}px`;
+  }
+
+  function clearPanelPosition() {
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.left = '';
+    panel.style.width = '';
+  }
+
   function open() {
     closeOpen();
     openEl = el;
@@ -163,11 +185,21 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     renderPanel();
     if (activeIndex < 0) activeIndex = multiple ? -1 : 0;
     syncPanel();
+    positionPanel();
+    document.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', close);
+  }
+
+  function onScroll() {
+    if (el.classList.contains('open')) positionPanel();
   }
 
   function close() {
     el.classList.remove('open');
     if (openEl === el) openEl = null;
+    clearPanelPosition();
+    document.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', close);
   }
 
   function onKey(e) {

@@ -6,12 +6,23 @@ import { loadAll, saveProject, saveStaff, exportJSON, importJSON } from '../data
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
 
+const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 5v14M5 12h14"/></svg>';
+const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 15V3m0 0L7 8m5-5l5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+
 export function renderConfig(container) {
   container.innerHTML = '';
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;';
-  const tabStaff = btn('人员管理', true);
-  const tabProject = btn('任务管理');
+  bar.className = 'seg';
+  bar.style.marginBottom = '12px';
+  const tabStaff = document.createElement('button');
+  tabStaff.type = 'button';
+  tabStaff.className = 'active';
+  tabStaff.textContent = '人员管理';
+  const tabProject = document.createElement('button');
+  tabProject.type = 'button';
+  tabProject.textContent = '任务管理';
   bar.append(tabStaff, tabProject);
   container.appendChild(bar);
   const body = document.createElement('div');
@@ -21,27 +32,43 @@ export function renderConfig(container) {
   tabProject.onclick = () => { setTab(tabProject, tabStaff); renderProjects(body); };
 }
 
-function btn(text, active = false) {
+function btn(text, active = false, icon = '') {
   const b = document.createElement('button');
   b.type = 'button';
-  b.textContent = text;
+  b.innerHTML = `${icon}<span>${text}</span>`;
   b.className = `btn btn-${active ? 'primary' : 'default'}`;
   return b;
 }
 
 function setTab(on, off) {
-  on.className = 'btn btn-primary';
-  off.className = 'btn btn-default';
+  on.classList.add('active');
+  off.classList.remove('active');
+}
+
+function statusBadge(status) {
+  const map = {
+    active: ['badge-success', '活跃'],
+    new: ['badge-primary', '新入'],
+    left: ['badge-muted', '已退出'],
+  };
+  const [cls, label] = map[status] ?? ['badge-muted', status];
+  return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
+}
+
+function activeBadge(on) {
+  return on
+    ? '<span class="badge badge-success"><span class="badge-dot"></span>启用</span>'
+    : '<span class="badge badge-muted"><span class="badge-dot"></span>停用</span>';
 }
 
 async function renderStaffs(body) {
   body.innerHTML = '';
   const { staffs } = await loadAll();
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
+  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
   actions.append(
-    btn('新增人员', false), btn('Excel 导入', false), btn('Excel 导出', false),
-    btn('JSON 备份', false), btn('JSON 恢复', false),
+    btn('新增人员', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD),
+    btn('JSON 备份', false, ICON_DOWNLOAD), btn('JSON 恢复', false, ICON_UPLOAD),
   );
   actions.children[0].onclick = () => editStaffDialog();
   actions.children[1].onclick = () => fileDialog(importStaffs, '人员 Excel');
@@ -50,6 +77,8 @@ async function renderStaffs(body) {
   actions.children[4].onclick = () => jsonRestore();
   body.appendChild(actions);
 
+  const card = document.createElement('div');
+  card.className = 'card';
   const table = document.createElement('table');
   table.className = 'table';
   const head = ['姓名', '状态', '可胜任项目', '擅长(原因)', '禁忌(原因)', '周疲劳上限', '高强度上限', '操作'];
@@ -61,18 +90,19 @@ async function renderStaffs(body) {
     const pref = s.preferredProjects.map(p => `${p.projectId}${p.reason ? `(${p.reason})` : ''}`).join(', ') || '-';
     const banned = s.bannedProjects.map(b => `${b.projectId}${b.reason ? `(${b.reason})` : ''}`).join(', ') || '-';
     tr.innerHTML = `
-      <td>${s.name}</td>
-      <td>${s.status}</td>
+      <td><strong>${s.name}</strong></td>
+      <td>${statusBadge(s.status)}</td>
       <td>${s.allowedProjects.join(', ') || '-'}</td>
       <td>${pref}</td>
       <td>${banned}</td>
       <td>${s.maxWeeklyFatigue}</td>
       <td>${s.maxHeavyTaskCount}</td>
-      <td><button type="button" data-edit class="btn btn-default btn-sm">编辑</button></td>`;
+      <td><button type="button" data-edit class="btn btn-default btn-sm">${ICON_EDIT}编辑</button></td>`;
     tr.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
     tbody.appendChild(tr);
   }
-  body.appendChild(table);
+  card.appendChild(table);
+  body.appendChild(card);
 }
 
 async function editStaffDialog(staff) {
@@ -175,13 +205,15 @@ async function renderProjects(body) {
   body.innerHTML = '';
   const { projects } = await loadAll();
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
-  actions.append(btn('新增任务', false), btn('Excel 导入', false), btn('Excel 导出', false));
+  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
+  actions.append(btn('新增任务', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD));
   actions.children[0].onclick = () => editProjectDialog();
   actions.children[1].onclick = () => fileDialog(importProjects, '任务 Excel');
   actions.children[2].onclick = () => exportProjects();
   body.appendChild(actions);
 
+  const card = document.createElement('div');
+  card.className = 'card';
   const table = document.createElement('table');
   table.className = 'table';
   const head = ['名称', '劳累指数', '所需人数', '重复星期', '时段', '启用', '操作'];
@@ -193,17 +225,18 @@ async function renderProjects(body) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
     const slots = p.slots.map(s => `${s.label} ${s.startTime}-${s.endTime}`).join('；') || '-';
     tr.innerHTML = `
-      <td>${p.name}</td>
-      <td>${p.fatigueScore}</td>
+      <td><strong>${p.name}</strong></td>
+      <td>${'🔥'.repeat(p.fatigueScore)}</td>
       <td>${p.requiredCapacity}</td>
       <td>${week}</td>
       <td>${slots}</td>
-      <td>${p.active ? '启用' : '停用'}</td>
-      <td><button type="button" data-edit class="btn btn-default btn-sm">编辑</button></td>`;
+      <td>${activeBadge(p.active)}</td>
+      <td><button type="button" data-edit class="btn btn-default btn-sm">${ICON_EDIT}编辑</button></td>`;
     tr.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
     tbody.appendChild(tr);
   }
-  body.appendChild(table);
+  card.appendChild(table);
+  body.appendChild(card);
 }
 
 async function editProjectDialog(project) {

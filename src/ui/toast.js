@@ -10,8 +10,10 @@ export function showToast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
   const icon = document.createElement('span');
+  icon.className = 'toast-icon';
   icon.textContent = ICONS[type] ?? 'ℹ';
   const text = document.createElement('span');
+  text.className = 'toast-text';
   text.textContent = msg;
   t.append(icon, text);
   el.appendChild(t);

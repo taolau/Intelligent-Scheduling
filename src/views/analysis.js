@@ -1,8 +1,19 @@
 import { buildContext } from '../core/substitute.js';
 import { loadAll } from '../data/store.js';
-import { getWeekStart, getWeekDates } from '../core/week.js';
+import { getWeekStart, getWeekDates, todayStr, toDateStr } from '../core/week.js';
 
-let weekStart = getWeekStart(new Date().toISOString().slice(0, 10));
+let weekStart = getWeekStart(todayStr());
+
+const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M15 18l-6-6 6-6"/></svg>';
+const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M9 18l6-6-6-6"/></svg>';
+
+function btn(text, active = false, icon = '', iconAfter = false) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.innerHTML = iconAfter ? `<span>${text}</span>${icon}` : `${icon}<span>${text}</span>`;
+  b.className = `btn btn-${active ? 'primary' : 'default'}`;
+  return b;
+}
 
 export async function renderAnalysis(container) {
   const data = await loadAll();
@@ -12,18 +23,31 @@ export async function renderAnalysis(container) {
 
   container.innerHTML = '';
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;';
-  const prev = document.createElement('button'), next = document.createElement('button');
-  prev.type = 'button'; next.type = 'button';
-  prev.className = 'btn btn-default'; next.className = 'btn btn-default';
-  prev.textContent = '← 上周'; next.textContent = '下周 →';
+  bar.className = 'cal-bar';
+  const group = document.createElement('div');
+  group.className = 'cal-bar-group';
+  const prev = btn('上周', false, ICON_PREV), next = btn('下周', false, ICON_NEXT, true);
   const label = document.createElement('span');
   label.className = 'week-label';
   label.textContent = `${weekStart} ~ ${getWeekDates(weekStart)[6]}`;
-  bar.append(prev, label, next);
+  const today = btn('今天');
+  group.append(prev, label, next, today);
+  bar.append(group);
   container.appendChild(bar);
   prev.onclick = () => { weekStart = shift(weekStart, -7); renderAnalysis(container); };
   next.onclick = () => { weekStart = shift(weekStart, 7); renderAnalysis(container); };
+  today.onclick = () => { weekStart = getWeekStart(todayStr()); renderAnalysis(container); };
+
+  const activeStaffs = data.staffs.filter(s => s.status !== 'left');
+  const participants = new Set(weekSchedules.flatMap(s => s.staffIds)).size;
+  const overCount = activeStaffs.filter(s => (ctx.weeklyFatigue.get(s.id) ?? 0) > s.maxWeeklyFatigue).length;
+  const statRow = document.createElement('div');
+  statRow.className = 'stat-row';
+  statRow.innerHTML = `
+    <div class="stat"><div class="stat-value">${weekSchedules.length}</div><div class="stat-label">本周班次</div></div>
+    <div class="stat"><div class="stat-value">${participants}</div><div class="stat-label">参与人员</div></div>
+    <div class="stat"><div class="stat-value"${overCount ? ' style="color:#dc2626"' : ''}>${overCount}</div><div class="stat-label">疲劳超限</div></div>`;
+  container.appendChild(statRow);
 
   const canvas = document.createElement('canvas');
   canvas.width = 900;
@@ -36,7 +60,19 @@ function shift(dateStr, days) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + days);
-  return getWeekStart(dt.toISOString().slice(0, 10));
+  return getWeekStart(toDateStr(dt));
+}
+
+function roundedBar(g, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  g.beginPath();
+  g.moveTo(x + rr, y);
+  g.arcTo(x + w, y, x + w, y + h, rr);
+  g.arcTo(x + w, y + h, x, y + h, rr);
+  g.arcTo(x, y + h, x, y, rr);
+  g.arcTo(x, y, x + w, y, rr);
+  g.closePath();
+  g.fill();
 }
 
 function draw(canvas, staffs, ctx) {
@@ -54,36 +90,46 @@ function draw(canvas, staffs, ctx) {
   const maxHeavy = Math.max(1, ...sorted.map(s => ctx.heavyCounts.get(s.id) ?? 0));
 
   // 网格线
-  g.strokeStyle = '#eee';
+  g.strokeStyle = '#f0f0f0';
+  g.lineWidth = 1;
   for (let i = 0; i <= 6; i++) {
     const y = pad.top + innerH - (i / 6) * innerH;
     g.beginPath(); g.moveTo(pad.left, y); g.lineTo(canvas.width - pad.right, y); g.stroke();
   }
 
+  const fatigueGrad = g.createLinearGradient(0, pad.top, 0, pad.top + innerH);
+  fatigueGrad.addColorStop(0, '#a78bfa');
+  fatigueGrad.addColorStop(1, '#7c3aed');
+  const heavyGrad = g.createLinearGradient(0, pad.top, 0, pad.top + innerH);
+  heavyGrad.addColorStop(0, '#f87171');
+  heavyGrad.addColorStop(1, '#dc2626');
+
   sorted.forEach((s, i) => {
     const cx = pad.left + groupW * i + groupW / 2;
     const fatigue = ctx.weeklyFatigue.get(s.id) ?? 0;
     const heavy = ctx.heavyCounts.get(s.id) ?? 0;
-    // 劳累柱（蓝）
+    // 劳累柱（紫渐变，圆角）
     const fh = (fatigue / maxFatigue) * innerH;
-    g.fillStyle = '#2563eb';
-    g.fillRect(cx - barW - 3, pad.top + innerH - fh, barW, fh);
-    // 高强度柱（红）
+    g.fillStyle = fatigueGrad;
+    roundedBar(g, cx - barW - 3, pad.top + innerH - fh, barW, fh, 4);
+    // 高强度柱（红渐变，圆角）
     const hh = (heavy / maxHeavy) * innerH;
-    g.fillStyle = '#dc2626';
-    g.fillRect(cx + 3, pad.top + innerH - hh, barW, hh);
-    // 姓名
-    g.fillStyle = '#222';
-    g.font = '12px sans-serif';
+    g.fillStyle = heavyGrad;
+    roundedBar(g, cx + 3, pad.top + innerH - hh, barW, hh, 4);
+    // 姓名（超限标红）
+    const over = fatigue > s.maxWeeklyFatigue;
+    g.fillStyle = over ? '#dc2626' : '#374151';
+    g.font = over ? 'bold 12px sans-serif' : '12px sans-serif';
     g.textAlign = 'center';
     g.fillText(s.name, cx, canvas.height - 20);
     // 数值
-    g.fillStyle = '#2563eb';
+    g.fillStyle = '#7c3aed';
+    g.font = '11px sans-serif';
     g.fillText(String(fatigue), cx - barW / 2 - 3, pad.top + innerH - fh - 4);
     g.fillStyle = '#dc2626';
     g.fillText(String(heavy), cx + barW / 2 + 3, pad.top + innerH - hh - 4);
     // 超限标注
-    if (fatigue > s.maxWeeklyFatigue) {
+    if (over) {
       g.fillStyle = '#dc2626';
       g.font = 'bold 12px sans-serif';
       g.fillText('超限', cx, pad.top + 12);
