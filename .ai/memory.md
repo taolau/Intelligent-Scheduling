@@ -4,24 +4,24 @@
 # [规则] 重点标注 Tao 的进度。
 
 ## 📍 当前状态
-- **侧边栏导航**：✅ 完成 - 顶部 tab 改左侧可收缩侧栏（浅色/SVG 线框图标/收起 56px 窄条/localStorage 持久化），Tao 拍板「收起成图标窄条+SVG+浅色」
-- **自定义下拉 Select**：✅ 完成 - 新增 src/ui/select.js，单选+多选统一组件（选项打勾/hover/键盘导航/多选标签增删/点击外部关闭）
-- **按钮优化**：✅ 完成 - 按压 scale(.97)/hover 投影/active 内阴影/圆角 8px/字重 500
-- **表单元素+周历+表格**：✅ 完成 - 周几 chips 胶囊化（.day-chip）、输入框 hover/圆角 7px、周历卡片 hover 上浮+虚线空格、表格斑马纹
-- **git**：⏳ 四轮 UI 改动待统一提交（本次 save 后执行）
-- **浏览器验证**：✅ 全部 Playwright 真实点击验证 + 41 单测全绿
+- **周历页（排班）**：✅ 完成 - 布局填满视口 + 卡片信息增强（时段/劳累徽标/缺员满员角标/疲劳色chip）+ 工具栏分组图标化 + 今天按钮 + 批量铺排未来N周 + 时区bug修复 + 蒜皮紫框架（浅蓝→紫表头/时段胶囊）
+- **基础配置页**：✅ 完成 - 分段Tab + 操作按钮图标 + 状态徽标（人员状态/劳累🔥/启停）+ 表格卡片容器
+- **疲劳分析页**：✅ 完成 - 工具栏图标化 + 本周摘要卡（班次/参与/超限）+ 圆角渐变柱状图 + 超限标注
+- **品牌图标**：✅ 完成 - 左上角换为 **Tao 提供的** 蔬菜大蒜 SVG（32px，彩色）
+- **全局**：✅ 完成 - 色系蓝→蒜皮紫（主色 #7c3aed）、toast 顶部居中+圆角升级、select 下拉 fixed 定位修复、弹窗加宽 720px
+- **git**：⏳ 本次会话大批 UI 改动待统一提交（save 后执行）
+- **dist**：⏳ 仍是旧构建产物，需跑 `node build.js` 更新
 
 ## 🧠 核心决策
-- **UI 设计语言**（长期，已入 spec）：8px 圆角统一、主色 #2563eb、按压/悬停反馈（scale+投影+inset）、圆角胶囊 chips
-- **自定义下拉组件 select.js**：单选/多选统一 API，`el.value` getter/setter 兼容原生 select 读取方式，options 支持字符串或 {value,label}
-- **侧栏体系**：`.sidebar` + `.collapsed` 类切换宽度 208↔56px，CSS 过渡；收起态 label 用 CSS 隐藏，原生 `title` 做 tooltip
-- 智能排班手动触发 / buildContext 含 schedules：长期决策，已在 spec.md，此处不重复
+- **紫色设计语言**（长期，已入 spec）：主色 #7c3aed，浅紫 #f5f3ff/#ede9fe，紫边框 #ddd6fe/#c4b5fd，蒜皮淡紫 #e6ddfb
+- **时区铁律**（长期，已入 spec）：日期一律用本地 `todayStr()`/`toDateStr()`，**禁止 `toISOString().slice(0,10)`**（UTC 偏移致周切换错乱/凌晨定位错周）
+- **布局**：body `height:100vh + overflow:hidden`，内容在各滚动容器（#view overflow-y:auto），grid 用 `minmax(0,1fr)` 均分填满视口
+- **下拉 select**：面板 `position:fixed` 视口定位（空间不足向上翻转），解决弹窗内 absolute 面板被 overflow 裁剪
+- 智能排班手动触发 / buildContext 含 schedules：长期决策，已在 spec
 
 ## ⚠️ 待办与注意
-- [待办] 统一提交四轮 UI 改动（本次 save 后执行）
-- [待办] 真实场景试用：录入周日任务（投影/接待/做饭/洗碗）验证算法手感
-- [注意] 存储介质已换 localStorage：dev(http) 与 file:// 数据不互通，试用期可重录或 JSON 导出/导入
-- [注意] 上午(08-12)与中午(11:30-13:00)时段重叠 → 智能排班拒绝中午班次是**正确**过滤行为
-- [注意] 拖拽回归手测待做；Playwright 无法模拟 dataTransfer，需原生 DragEvent 构造
-- [注意] 后台 dev server 直接用 `node ./node_modules/vite/bin/vite.js` 跑，勿用 npm run dev+tee（TaskStop 杀不干净会残留孤儿进程占端口）
-- [注意] 本机 Playwright MCP 现已可用，无需 Edge CDP 兜底（原 pitfalls#7 已过时，待更新）
+- [待办] 统一提交本次会话改动（save 后执行，改动量大建议分批提交）
+- [待办] dist/index.html 旧构建，需 `node build.js` 更新（含全部新功能与大蒜图标）
+- [待办] 真实场景试用：录入周日任务验证算法手感
+- [注意] 时区陷阱已入 pitfalls：本地凌晨/周切换会踩
+- [注意] 拖拽回归手测待做：Playwright 无法模拟 dataTransfer（pitfalls#4）

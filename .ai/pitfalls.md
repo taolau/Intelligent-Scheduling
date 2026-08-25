@@ -71,3 +71,19 @@
 - **根因**：TaskStop 杀的是 npm/tee 外壳，vite 本体（node 子进程）成孤儿存活继续占端口；旧 server 在 5199、用户访问默认 5173 自然失败
 - **解决**：后台 dev server 直接 `node ./node_modules/vite/bin/vite.js --port 5173 --strictPort`（不经 npm），TaskStop 可干净杀掉；停服务前 `netstat -ano | findstr :端口` 确认无残留，必要时 `Stop-Process -Id <pid> -Force`
 - **启示**：后台长驻进程尽量直接跑可执行文件本体而非包一层 npm/tee；端口不可访问先查 LISTENING 与 PID，再谈重启
+
+## 9. 日期运算禁用 toISOString().slice(0,10)：UTC 偏移致周切换错乱/定位错周
+
+- **报错**：周历"下周 →"点了周标签纹丝不动、"上周"跳两周；本地凌晨打开页面定位到上周
+- **场景**：calendar/analysis/substitute 用 `getWeekStart(new Date().toISOString().slice(0,10))` 或 `getWeekStart(date.toISOString().slice(0,10))`
+- **根因**：`toISOString()` 返回 **UTC** 日期。本地（UTC+8）00:00-07:59 时 UTC 日期 = 本地昨天；本地 8/31 零点 → UTC 8/30 → `getWeekStart` 归一化回 8/24 → 周切换原地踏步甚至倒退
+- **解决**：一律用本地日期工具：`todayStr()`（本地今天）、`toDateStr(date)`（Date → 本地字符串），替换全项目 5 处 `toISOString().slice(0,10)`
+- **启示**：凡涉及"日期字符串 + 时区"，统一用本地 getter 构造（week.js 已封装 todayStr/toDateStr），永远不碰 toISOString
+
+## 10. 弹窗内绝对定位下拉面板被 overflow 裁剪 → fixed 视口定位
+
+- **报错**：手动建班次弹窗选任务的下拉"被吃掉"（选项看不见或需滚动）
+- **场景**：自定义下拉 `.sel-panel`（position:absolute）位于 `.modal-body { overflow-y:auto }` 内，面板向下展开 224px 溢出 body 边界
+- **根因**：`.modal-body` 的 overflow-y:auto 裁剪绝对定位子元素；弹窗内容矮时面板大部分在裁剪区外
+- **解决**：select.js 打开面板时改 `position:fixed` 按 trigger getBoundingClientRect() 视口定位（z-index 提至 1050 浮于 modal 遮罩之上）；底部空间不足自动向上翻转；滚动跟随、resize 关闭
+- **启示**：任何浮层（下拉/气泡）出现在滚动容器内都要考虑 overflow 裁剪，成熟做法是 fixed 定位到视口

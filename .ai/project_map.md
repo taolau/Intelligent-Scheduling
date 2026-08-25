@@ -22,7 +22,7 @@ Intelligent-Scheduling/
 | | `db.js` | localStorage 封装（CRUD） | 无 |
 | | `store.js` | 业务门面（CRUD+缓存+JSON备份/恢复） | db |
 | `core/` | `week.js` | 周/日期/时间工具（纯函数） | 无 |
-| | `expand.js` | 按 weekDays+slots 展开班次 | week |
+| | `expand.js` | 按 weekDays+slots 展开班次；`expandWeeks` 批量展开连续 N 周 | week |
 | | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
 | | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
 | | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
@@ -31,7 +31,7 @@ Intelligent-Scheduling/
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类） | 无 |
 | | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | select |
-| | `select.js` | 自定义下拉：createSelect 单选/多选统一组件，el.value 兼容原生 select 读取 | theme |
+| | `select.js` | 自定义下拉：createSelect 单选/多选统一组件，el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
 | | `modal.js` | 弹窗（替补推荐等） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
