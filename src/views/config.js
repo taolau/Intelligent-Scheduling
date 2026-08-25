@@ -1,6 +1,7 @@
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
+import { createSelect } from '../ui/select.js';
 import { loadAll, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
@@ -86,26 +87,19 @@ async function editStaffDialog(staff) {
   nameInput.placeholder = '请输入姓名';
   const nameF = field({ label: '姓名', required: true, control: nameInput });
 
-  const statusSel = document.createElement('select');
-  statusSel.className = 'select';
-  for (const s of STAFF_STATUSES) {
-    const o = document.createElement('option');
-    o.value = s; o.textContent = s;
-    if (s === target.status) o.selected = true;
-    statusSel.appendChild(o);
-  }
+  const statusSel = createSelect({
+    options: STAFF_STATUSES.map((s) => ({ value: s, label: s })),
+    value: target.status,
+  });
   const statusF = field({ label: '状态', control: statusSel, hint: 'new=新入保护，left=退出保留历史' });
 
-  const allowedSel = document.createElement('select');
-  allowedSel.className = 'select';
-  allowedSel.multiple = true;
-  for (const p of projects) {
-    const o = document.createElement('option');
-    o.value = p.id; o.textContent = p.name;
-    if (target.allowedProjects.includes(p.id)) o.selected = true;
-    allowedSel.appendChild(o);
-  }
-  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '按住 Ctrl 可多选' });
+  const allowedSel = createSelect({
+    multiple: true,
+    placeholder: '请选择可胜任项目',
+    options: projects.map((p) => ({ value: p.id, label: p.name })),
+    value: target.allowedProjects,
+  });
+  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '可多选' });
 
   const preferredEditor = rowsEditor({
     label: '擅长项目（加分）', addLabel: '＋ 添加擅长项目',
@@ -153,7 +147,7 @@ async function editStaffDialog(staff) {
       id: target.id,
       name: nameInput.value,
       status: statusSel.value,
-      allowedProjects: [...allowedSel.selectedOptions].map(o => o.value),
+      allowedProjects: allowedSel.value,
       preferredProjects: preferredEditor.collect(),
       bannedProjects: bannedEditor.collect(),
       maxWeeklyFatigue: Number(fatigueInput.value),
@@ -222,14 +216,13 @@ async function editProjectDialog(project) {
   nameInput.placeholder = '请输入任务名';
   const nameF = field({ label: '名称', required: true, control: nameInput });
 
-  const fatigueSel = document.createElement('select');
-  fatigueSel.className = 'select';
-  for (let i = 1; i <= FATIGUE_MAX; i++) {
-    const o = document.createElement('option');
-    o.value = i; o.textContent = `${i}（${i === 1 ? '轻松' : i === 2 ? '中等' : '高强度'}）`;
-    if (target.fatigueScore === i) o.selected = true;
-    fatigueSel.appendChild(o);
-  }
+  const fatigueSel = createSelect({
+    options: Array.from({ length: FATIGUE_MAX }, (_, i) => {
+      const n = i + 1;
+      return { value: String(n), label: `${n}（${n === 1 ? '轻松' : n === 2 ? '中等' : '高强度'}）` };
+    }),
+    value: String(target.fatigueScore),
+  });
   const fatigueF = field({ label: '劳累指数', control: fatigueSel });
 
   const capInput = document.createElement('input');
@@ -245,11 +238,13 @@ async function editProjectDialog(project) {
   const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
   for (let d = 0; d < 7; d++) {
     const lab = document.createElement('label');
-    lab.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:13px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;';
+    lab.className = 'day-chip';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.value = d;
     cb.checked = target.weekDays.includes(d);
+    lab.classList.toggle('on', cb.checked);
+    cb.onchange = () => lab.classList.toggle('on', cb.checked);
     dayChecks.push(cb);
     lab.append(cb, document.createTextNode(`周${DAYS[d]}`));
     daysWrap.appendChild(lab);
@@ -266,14 +261,10 @@ async function editProjectDialog(project) {
     initial: target.slots.map(s => ({ label: s.label, startTime: s.startTime, endTime: s.endTime })),
   });
 
-  const activeSel = document.createElement('select');
-  activeSel.className = 'select';
-  for (const [val, txt] of [['true', '启用'], ['false', '停用']]) {
-    const o = document.createElement('option');
-    o.value = val; o.textContent = txt;
-    if (String(target.active) === val) o.selected = true;
-    activeSel.appendChild(o);
-  }
+  const activeSel = createSelect({
+    options: [{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }],
+    value: String(target.active),
+  });
   const activeF = field({ label: '启用状态', control: activeSel });
 
   body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, activeF.wrap);

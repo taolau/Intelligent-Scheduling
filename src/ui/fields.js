@@ -1,3 +1,5 @@
+import { createSelect } from './select.js';
+
 export function field({ label, required = false, hint, control }) {
   const wrap = document.createElement('div');
   wrap.className = 'field';
@@ -48,15 +50,7 @@ export function rowsEditor({ label, addLabel, cols, initial = [] }) {
     for (const col of cols) {
       let el;
       if (col.type === 'select') {
-        el = document.createElement('select');
-        el.className = 'select';
-        for (const opt of col.options) {
-          const o = document.createElement('option');
-          o.value = opt.value;
-          o.textContent = opt.label;
-          if (String(data[col.key]) === String(opt.value)) o.selected = true;
-          el.appendChild(o);
-        }
+        el = createSelect({ options: col.options, value: data[col.key] });
       } else {
         el = document.createElement('input');
         el.className = 'input';

@@ -9,6 +9,7 @@ import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
 import { exportAttendance } from '../ui/excel.js';
+import { createSelect } from '../ui/select.js';
 
 let currentWeekStart = getWeekStart(new Date().toISOString().slice(0, 10));
 let data = { projects: [], staffs: [], schedules: [], leaves: [] };
@@ -239,14 +240,36 @@ function openSubstituteModal(sch, recom) {
 
 function manualCreate(date, slotLabel) {
   const body = document.createElement('div');
-  body.innerHTML = `
-    <div style="margin-bottom:8px;">日期 <input class="input" data-k="date" value="${date ?? currentWeekStart}"></div>
-    <div style="margin-bottom:8px;">时段
-      <select class="select" data-k="slot">${SLOT_LABELS.map(s => `<option ${s === slotLabel ? 'selected' : ''}>${s}</option>`).join('')}</select>
-    </div>
-    <div style="margin-bottom:8px;">任务
-      <select class="select" data-k="project">${data.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
-    </div>`;
+
+  const dateRow = document.createElement('div');
+  dateRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
+  dateRow.appendChild(document.createTextNode('日期'));
+  const dateInput = document.createElement('input');
+  dateInput.className = 'input';
+  dateInput.type = 'date';
+  dateInput.dataset.k = 'date';
+  dateInput.value = date ?? currentWeekStart;
+  dateRow.appendChild(dateInput);
+
+  const slotRow = document.createElement('div');
+  slotRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
+  slotRow.appendChild(document.createTextNode('时段'));
+  const slotSel = createSelect({ options: SLOT_LABELS, value: slotLabel ?? SLOT_LABELS[0] });
+  slotSel.dataset.k = 'slot';
+  slotRow.appendChild(slotSel);
+
+  const projRow = document.createElement('div');
+  projRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
+  projRow.appendChild(document.createTextNode('任务'));
+  const projSel = createSelect({
+    options: data.projects.map((p) => ({ value: p.id, label: p.name })),
+    value: data.projects[0]?.id ?? '',
+    placeholder: '请选择任务',
+  });
+  projSel.dataset.k = 'project';
+  projRow.appendChild(projSel);
+
+  body.append(dateRow, slotRow, projRow);
   const footer = document.createElement('div');
   const okBtn = document.createElement('button');
   okBtn.type = 'button';
