@@ -9,6 +9,48 @@
     * { box-sizing: border-box; margin: 0; }
     body { font-family: system-ui, "Microsoft YaHei", sans-serif; background: #f7f4f8; color: #2a2430; }
     #view { background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(90,29,120,.05), 0 8px 20px rgba(60,12,74,.06); }
+
+    /* 首屏侧边栏样式（内联消除 JS 注入前的裸闪/FOUC）：与 src/ui/theme.js 侧边栏段同步维护，改动需两处一致 */
+    .sidebar { width:208px; flex-shrink:0; height:100vh; position:sticky; top:0; background:#fff;
+      border-right:1px solid #e6e1ec; display:flex; flex-direction:column; overflow:hidden;
+      transition:width .2s ease; }
+    .sidebar.collapsed { width:56px; }
+    .side-brand { display:flex; align-items:center; gap:11px; padding:13px 12px;
+      border-bottom:1px solid #f1edf5; white-space:nowrap; }
+    .side-brand-icon { width:38px; height:38px; flex-shrink:0; padding:4px;
+      background:linear-gradient(135deg,#f7f1fa 0%,#efe3f6 100%); border-radius:11px;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 2px 6px rgba(90,29,120,.14);
+      display:flex; align-items:center; justify-content:center;
+      transition:transform .18s ease, box-shadow .18s ease; }
+    .side-brand:hover .side-brand-icon { transform:translateY(-1px) scale(1.05);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 4px 12px rgba(90,29,120,.2); }
+    .side-brand-icon svg { width:28px; height:28px; display:block; }
+    .side-brand-text { display:flex; flex-direction:column; line-height:1.2; overflow:hidden; }
+    .side-brand-text b { font-size:16px; font-weight:700; color:#241f2e; letter-spacing:.02em; }
+    .side-brand-text em { font-style:normal; font-size:10px; font-weight:600; color:#5a1d78;
+      letter-spacing:.16em; text-transform:uppercase; margin-top:1px; }
+    .side-nav { flex:1; padding:12px 8px; display:flex; flex-direction:column; gap:4px; overflow-y:auto; }
+    .side-item { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border:none;
+      background:transparent; border-radius:6px; font-size:14px; color:#3d3747; cursor:pointer;
+      white-space:nowrap; text-align:left; transition:background-color .15s,color .15s; }
+    .side-item:hover { background:#f4f1f7; color:#241f2e; }
+    .side-item.active { background:#efe3f6; color:#5a1d78; font-weight:500; }
+    .side-icon { flex-shrink:0; width:20px; height:20px; display:inline-flex; align-items:center;
+      justify-content:center; }
+    .side-icon svg { width:18px; height:18px; }
+    .side-label { overflow:hidden; text-overflow:ellipsis; }
+    .side-toggle { margin:12px 8px; padding:9px 0; border:1px solid #e6e1ec; background:#fff; border-radius:6px;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; color:#6a6178;
+      transition:background-color .15s,color .15s; }
+    .side-toggle:hover { background:#f4f1f7; color:#241f2e; }
+    .side-toggle svg { width:16px; height:16px; }
+    .chev-left { display:inline; }
+    .chev-right { display:none; }
+    .sidebar.collapsed .chev-left { display:none; }
+    .sidebar.collapsed .chev-right { display:inline; }
+    .sidebar.collapsed .side-label { display:none; }
+    .sidebar.collapsed .side-brand { justify-content:center; padding:13px 0; }
+    .sidebar.collapsed .side-item { justify-content:center; padding:10px 0; }
   </style>
 </head>
 <body>
