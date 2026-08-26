@@ -1,5 +1,5 @@
 import { buildContext } from '../core/substitute.js';
-import { loadAll } from '../data/store.js';
+import { getCache } from '../data/store.js';
 import { getWeekStart, getWeekDates, todayStr, toDateStr } from '../core/week.js';
 
 let weekStart = getWeekStart(todayStr());
@@ -18,7 +18,7 @@ function btn(text, active = false, icon = '', iconAfter = false) {
 
 export async function renderAnalysis(container) {
   if (resizeHandler) { window.removeEventListener('resize', resizeHandler); resizeHandler = null; }
-  const data = await loadAll();
+  const data = getCache();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   const weekSchedules = data.schedules.filter(s => s.date >= weekStart && s.date <= getWeekDates(weekStart)[6]);
   const ctx = buildContext(data.staffs, weekSchedules, data.leaves, projectById);

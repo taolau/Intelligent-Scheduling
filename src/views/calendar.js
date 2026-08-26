@@ -3,7 +3,7 @@ import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
-import { loadAll, saveSchedule, saveLeave } from '../data/store.js';
+import { getCache, saveSchedule, saveLeave } from '../data/store.js';
 import { createSchedule, createLeave, SLOT_LABELS, DEFAULT_TIMES } from '../data/model.js';
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
@@ -31,11 +31,11 @@ async function ensureExpanded() {
       await saveSchedule(sch);
     }
   }
-  data = await loadAll();
+  data = getCache();
 }
 
 export async function renderCalendar(container) {
-  data = await loadAll();
+  data = getCache();
   await ensureExpanded();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById);
@@ -396,7 +396,7 @@ function bulkPlanDialog() {
         created++;
       }
     }
-    data = await loadAll();
+    data = getCache();
     modal.close();
     showToast(`已铺排 ${n} 周、新建 ${created} 个班次`, created ? 'success' : 'info');
     renderCalendar(document.querySelector('#view'));

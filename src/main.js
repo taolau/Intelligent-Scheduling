@@ -4,6 +4,7 @@ injectGlobalStyles();
 import { renderCalendar } from './views/calendar.js';
 import { renderConfig } from './views/config.js';
 import { renderAnalysis } from './views/analysis.js';
+import { loadAll } from './data/store.js';
 
 const ICON = {
   calendar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4M16 3v4"/><path d="M8 14h3M13 14h3"/></svg>`,
@@ -61,4 +62,9 @@ function initSidebar() {
 
 buildNav();
 initSidebar();
-switchView('calendar');
+init();
+
+async function init() {
+  await loadAll();
+  await switchView('calendar');
+}

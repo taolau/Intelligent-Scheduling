@@ -2,7 +2,7 @@ import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
-import { loadAll, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
+import { getCache, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_TIMES, fillSlotTimes } from '../data/model.js';
 
@@ -67,7 +67,7 @@ function activeBadge(on) {
 
 async function renderStaffs(body) {
   body.innerHTML = '';
-  const { staffs, projects } = await loadAll();
+  const { staffs, projects } = getCache();
   const projName = new Map(projects.map(p => [p.id, p.name]));
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
@@ -112,7 +112,7 @@ async function renderStaffs(body) {
 
 async function editStaffDialog(staff) {
   const target = staff ?? createStaff({});
-  const { projects } = await loadAll();
+  const { projects } = getCache();
   const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
   const body = document.createElement('div');
 
@@ -213,7 +213,7 @@ async function editStaffDialog(staff) {
 
 async function renderProjects(body) {
   body.innerHTML = '';
-  const { projects } = await loadAll();
+  const { projects } = getCache();
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
   actions.append(btn('新增任务', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD));

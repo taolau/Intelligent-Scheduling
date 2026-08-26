@@ -38,3 +38,12 @@ test('clearAll 清空全部 store', async () => {
   assert.equal((await db.getAll('staffs')).length, 0);
   assert.equal((await db.getAll('projects')).length, 0);
 });
+
+test('writeAll 一次整表替换', async () => {
+  await db.put('staffs', { id: 'S1', name: '一' });
+  await db.writeAll('staffs', [{ id: 'S2', name: '二' }, { id: 'S3', name: '三' }]);
+  const all = await db.getAll('staffs');
+  assert.equal(all.length, 2);
+  assert.equal(all[0].id, 'S2');
+  assert.equal(all[1].name, '三');
+});

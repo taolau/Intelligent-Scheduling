@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { createProject, createStaff } from '../data/model.js';
-import { loadAll, saveProject, saveStaff } from '../data/store.js';
+import { getCache, saveProject, saveStaff } from '../data/store.js';
 import { getWeekDates } from '../core/week.js';
 
 export function downloadBlob(blob, filename) {
@@ -23,7 +23,7 @@ function rowsToAoa(rows) {
 }
 
 export async function exportProjects() {
-  const { projects } = await loadAll();
+  const { projects } = getCache();
   const aoa = [['id', 'name', '劳累指数', '所需人数', '重复星期(0-6逗号)', '时段JSON', '启用(1/0)'], ...rowsToAoa(projects)];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
@@ -33,7 +33,7 @@ export async function exportProjects() {
 }
 
 export async function exportStaffs() {
-  const { staffs } = await loadAll();
+  const { staffs } = getCache();
   const aoa = [['id', 'name', '可胜任项目(逗号)', '擅长JSON', '不合适JSON', '周疲劳上限', '高强度次数上限', '状态'], ...staffs.map(s => [
     s.id, s.name, (s.allowedProjects ?? []).join(','),
     JSON.stringify(s.preferredProjects ?? []),
