@@ -291,7 +291,7 @@ function openSubstituteModal(sch, recom) {
     const name = document.createElement('div');
     name.innerHTML = `<strong>${r.staff.name}</strong>（得分 ${r.score}）`;
     const why = document.createElement('div');
-    why.style.cssText = 'color:#6b7280;font-size:13px;';
+    why.style.cssText = 'color:#6a6178;font-size:13px;';
     why.textContent = r.reasons.join('；');
     const pick = document.createElement('button');
     pick.type = 'button';
@@ -363,7 +363,7 @@ function manualCreate(date, slotLabel) {
 function bulkPlanDialog() {
   const body = document.createElement('div');
   const hint = document.createElement('p');
-  hint.style.cssText = 'margin-bottom:10px;color:#6b7280;font-size:13px;';
+  hint.style.cssText = 'margin-bottom:10px;color:#6a6178;font-size:13px;';
   hint.textContent = '按各任务的重复规则，从当前周开始向后展开班次空壳（不分配人员，已存在的自动跳过）。';
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:8px;';
