@@ -3,8 +3,8 @@ import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
-import { getCache, saveSchedule, saveLeave } from '../data/store.js';
-import { createSchedule, createLeave, SLOT_LABELS, DEFAULT_TIMES } from '../data/model.js';
+import { getCache, saveSchedule, saveLeave, getSettings } from '../data/store.js';
+import { createSchedule, createLeave, SLOT_LABELS } from '../data/model.js';
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
@@ -38,7 +38,7 @@ export async function renderCalendar(container) {
   data = getCache();
   await ensureExpanded();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById);
+  ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById, getSettings());
 
   container.innerHTML = '';
   const bar = document.createElement('div');
@@ -125,8 +125,6 @@ function renderScheduleCard(sch) {
   const card = document.createElement('div');
   card.className = 'sch-card';
   const project = data.projects.find(p => p.id === sch.projectId);
-  const slot = project?.slots?.find(s => s.label === sch.slotLabel);
-  const timeText = slot ? `${slot.startTime}-${slot.endTime}` : (DEFAULT_TIMES[sch.slotLabel] ?? '');
   const capacity = project?.requiredCapacity ?? 1;
   const filled = sch.staffIds.length;
   if (filled >= capacity) card.classList.add('full');
@@ -139,9 +137,6 @@ function renderScheduleCard(sch) {
 
   const meta = document.createElement('div');
   meta.className = 'sch-meta';
-  const time = document.createElement('span');
-  time.textContent = timeText;
-  meta.appendChild(time);
   if (project) {
     const badge = document.createElement('span');
     badge.className = 'sch-badge';
@@ -157,8 +152,8 @@ function renderScheduleCard(sch) {
     const staff = data.staffs.find(s => s.id === sid);
     const chip = document.createElement('span');
     chip.textContent = staff?.name ?? sid;
-    chip.className = staffChipClass(staff);
-    chip.title = staffChipTitle(staff);
+    chip.className = staffChipClass(staff, sch.date);
+    chip.title = staffChipTitle(staff, sch.date);
     enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
     chip.onclick = () => staffDialog(staff, sch);
     names.appendChild(chip);
@@ -172,20 +167,23 @@ function renderScheduleCard(sch) {
   return card;
 }
 
-function staffChipClass(staff) {
+function staffChipClass(staff, date) {
   if (!staff) return 'staff-chip';
   const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
   const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
+  const daily = date ? (ctx.dailyCounts?.get(`${staff.id}|${date}`) ?? 0) : 0;
+  const warnDaily = ctx.settings?.warnDailyCount ?? 0;
   if (fatigue > staff.maxWeeklyFatigue || heavy > staff.maxHeavyTaskCount) return 'staff-chip over';
-  if (fatigue >= staff.maxWeeklyFatigue * 0.8 || (staff.maxHeavyTaskCount > 0 && heavy >= staff.maxHeavyTaskCount)) return 'staff-chip warn';
+  if (daily >= warnDaily || fatigue >= staff.maxWeeklyFatigue * 0.8 || (staff.maxHeavyTaskCount > 0 && heavy >= staff.maxHeavyTaskCount)) return 'staff-chip warn';
   return 'staff-chip';
 }
 
-function staffChipTitle(staff) {
+function staffChipTitle(staff, date) {
   if (!staff) return '';
   const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
   const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
-  return `本周疲劳 ${fatigue}/${staff.maxWeeklyFatigue}，高强度 ${heavy}/${staff.maxHeavyTaskCount}`;
+  const daily = date ? (ctx.dailyCounts?.get(`${staff.id}|${date}`) ?? 0) : 0;
+  return `本周疲劳 ${fatigue}/${staff.maxWeeklyFatigue}，高强度 ${heavy}/${staff.maxHeavyTaskCount}，当日 ${daily} 个任务`;
 }
 
 async function dropStaff(e, cell) {
@@ -223,8 +221,12 @@ function shiftWeek(days) {
 async function smartFill() {
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   const empties = data.schedules.filter(s => s.staffIds.length < (projectById[s.projectId]?.requiredCapacity ?? 1));
-  empties.sort((a, b) => a.date.localeCompare(b.date) || SLOT_LABELS.indexOf(a.slotLabel) - SLOT_LABELS.indexOf(b.slotLabel));
+  empties.sort((a, b) => a.date.localeCompare(b.date)
+    || (a.slotLabel === '自主安排' ? 1 : 0) - (b.slotLabel === '自主安排' ? 1 : 0)
+    || SLOT_LABELS.indexOf(a.slotLabel) - SLOT_LABELS.indexOf(b.slotLabel));
   let filled = 0;
+  const warned = new Set();
+  const warnDaily = ctx.settings?.warnDailyCount ?? 0;
   for (const sch of empties) {
     while (sch.staffIds.length < projectById[sch.projectId].requiredCapacity) {
       const project = projectById[sch.projectId];
@@ -239,13 +241,23 @@ async function smartFill() {
         if (!best || score > best.score) best = { s: c.s, score };
       }
       sch.staffIds.push(best.s.id);
+      const dailyKey = `${best.s.id}|${sch.date}`;
+      const slotKey = `${best.s.id}|${sch.date}|${sch.slotLabel}`;
+      const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
+      ctx.dailyCounts.set(dailyKey, dailyAfter);
+      ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
       ctx.weeklyFatigue.set(best.s.id, (ctx.weeklyFatigue.get(best.s.id) ?? 0) + project.fatigueScore);
       if (project.fatigueScore === 3) ctx.heavyCounts.set(best.s.id, (ctx.heavyCounts.get(best.s.id) ?? 0) + 1);
+      if (warnDaily > 0 && dailyAfter >= warnDaily) warned.add(best.s.id);
       await saveSchedule(sch);
       filled++;
     }
   }
-  showToast(`智能排班完成：填充 ${filled} 个名额`, filled ? 'success' : 'info');
+  const warnMsg = [...warned].map(id => data.staffs.find(s => s.id === id)?.name ?? id).join('、');
+  const msg = warnMsg
+    ? `智能排班完成：填充 ${filled} 个名额；${warnMsg} 当日已达预警阈值`
+    : `智能排班完成：填充 ${filled} 个名额`;
+  showToast(msg, filled ? 'success' : 'info');
   renderCalendar(document.querySelector('#view'));
 }
 

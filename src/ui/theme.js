@@ -217,12 +217,12 @@ body { display:flex; height:100vh; overflow:hidden; }
 .sidebar.collapsed .chev-left { display:none; }
 .sidebar.collapsed .chev-right { display:inline; }
 .sidebar.collapsed .side-label { display:none; }
-.sidebar.collapsed .side-brand { justify-content:center; padding:16px 0; }
+.sidebar.collapsed .side-brand { justify-content:center; padding:13px 0; }
 .sidebar.collapsed .side-item { justify-content:center; padding:10px 0; }
 
 /* ===== 周历 ===== */
 .cal-grid { display:grid; grid-template-columns:70px repeat(7,1fr);
-  grid-template-rows:auto repeat(4,minmax(0,1fr)); gap:6px; font-size:13px;
+  grid-template-rows:auto minmax(0,0.55fr) repeat(3,minmax(0,1fr)); gap:6px; font-size:13px;
   flex:1; min-height:480px; }
 .cal-corner { font-weight:600; text-align:center; padding:4px; }
 .cal-date { background:#f7f1fa; color:#380c4a; border-radius:8px; padding:6px 4px; font-size:13px; }

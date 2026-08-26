@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { expandProjectForWeek, expandWeek, expandWeeks } from '../src/core/expand.js';
 import { createSchedule, createProject } from '../src/data/model.js';
 
+test('expandProjectForWeek: 自主安排时段按重复星期展开', () => {
+  const p = createProject({ name: '浇花', weekDays: [1, 3, 5], slots: [{ label: '自主安排' }] });
+  const rows = expandProjectForWeek(p, '2026-08-24'); // 一/三/五
+  assert.deepEqual(rows.map(r => r.date), ['2026-08-24', '2026-08-26', '2026-08-28']);
+  assert.ok(rows.every(r => r.slotLabel === '自主安排'));
+});
+
 test('expandProjectForWeek: 每周日且两时段 → 本周日展开 2 班次', () => {
   const p = createProject({
     name: '做饭', weekDays: [0], // 周日

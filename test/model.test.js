@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule, createLeave,
-         validateProject, validateStaff, SLOT_LABELS, fillSlotTimes } from '../src/data/model.js';
+         validateProject, validateStaff, SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -25,17 +25,17 @@ test('validateProject: 空 slot 标签非法', () => {
   assert.equal(r.valid, false);
 });
 
-test('fillSlotTimes: 空时间回填该时段默认时间', () => {
-  const filled = fillSlotTimes([
-    { label: '上午' },
-    { label: '晚上', startTime: '18:00', endTime: '' },
-    { label: '下午', startTime: '', endTime: '15:00' },
-  ]);
-  assert.deepEqual(filled, [
-    { label: '上午', startTime: '08:00', endTime: '12:00' },
-    { label: '晚上', startTime: '18:00', endTime: '21:00' },
-    { label: '下午', startTime: '13:00', endTime: '15:00' },
-  ]);
+test('validateProject: 至少配置一个时段', () => {
+  const p = createProject({ name: 'X', weekDays: [1], slots: [] });
+  const r = validateProject(p);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'slots'));
+});
+
+test('validateProject: 自主安排时段（无时间）合法', () => {
+  const p = createProject({ name: '浇花', slots: [{ label: '自主安排' }] });
+  const r = validateProject(p);
+  assert.equal(r.valid, true);
 });
 
 test('createStaff 带默认值', () => {
@@ -48,8 +48,12 @@ test('createStaff 带默认值', () => {
   assert.equal(s.maxHeavyTaskCount, 1);
 });
 
-test('SLOT_LABELS 预置四时段', () => {
-  assert.deepEqual(SLOT_LABELS, ['上午', '中午', '下午', '晚上']);
+test('SLOT_LABELS 预置四时段标签', () => {
+  assert.deepEqual(SLOT_LABELS, ['自主安排', '早', '中', '晚']);
+});
+
+test('DEFAULT_SETTINGS 数量上限默认值', () => {
+  assert.deepEqual(DEFAULT_SETTINGS, { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2 });
 });
 
 test('createSchedule 默认空人员', () => {

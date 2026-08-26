@@ -1,5 +1,4 @@
 import { createSelect } from './select.js';
-import { createTimeRange } from './timeRange.js';
 
 export function field({ label, required = false, hint, control }) {
   const wrap = document.createElement('div');
@@ -52,8 +51,6 @@ export function rowsEditor({ label, addLabel, cols, initial = [] }) {
       let el;
       if (col.type === 'select') {
         el = createSelect({ options: col.options, value: data[col.key] });
-      } else if (col.type === 'timeRange') {
-        el = createTimeRange({ value: data[col.key] ?? {}, options: col.options, defaults: col.defaults });
       } else {
         el = document.createElement('input');
         el.className = 'input';

@@ -1,16 +1,4 @@
-import { timeToMinutes } from './week.js';
-
-export function hasTimeOverlap(slotA, slotB, projectById) {
-  if (slotA.date !== slotB.date) return false;
-  const pa = projectById[slotA.projectId];
-  const pb = projectById[slotB.projectId];
-  if (!pa || !pb) return false;
-  const sa = pa.slots.find(s => s.label === slotA.slotLabel);
-  const sb = pb.slots.find(s => s.label === slotB.slotLabel);
-  if (!sa || !sb) return false;
-  return timeToMinutes(sa.startTime) < timeToMinutes(sb.endTime)
-      && timeToMinutes(sb.startTime) < timeToMinutes(sa.endTime);
-}
+import { DEFAULT_SETTINGS } from '../data/model.js';
 
 function isOnLeave(staffId, date, leaves) {
   return leaves.some(l => l.staffId === staffId && l.date === date);
@@ -19,6 +7,7 @@ function isOnLeave(staffId, date, leaves) {
 export function filterCandidate(staff, schedule, projectById, ctx) {
   const reasons = [];
   const project = projectById[schedule.projectId];
+  const { dailyTaskLimit, slotTaskLimit } = ctx.settings ?? DEFAULT_SETTINGS;
 
   if (staff.status === 'left') reasons.push('已退出，不可排班');
   if (staff.status === 'new' && project.fatigueScore === 3) reasons.push('新入保护：不参与高强度任务');
@@ -30,10 +19,11 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
 
   if (isOnLeave(staff.id, schedule.date, ctx.leaves)) reasons.push('当日请假');
 
-  const clash = (ctx.schedules ?? []).find(sch =>
-    sch.staffIds.includes(staff.id) && hasTimeOverlap(sch, schedule, projectById)
-  );
-  if (clash) reasons.push(`时段冲突：${projectById[clash.projectId]?.name || '其他任务'}`);
+  const dailyAfter = (ctx.dailyCounts?.get(`${staff.id}|${schedule.date}`) ?? 0) + 1;
+  if (dailyAfter > dailyTaskLimit) reasons.push(`当日任务数将超限（最多 ${dailyTaskLimit} 个）`);
+
+  const slotAfter = (ctx.slotCounts?.get(`${staff.id}|${schedule.date}|${schedule.slotLabel}`) ?? 0) + 1;
+  if (slotAfter > slotTaskLimit) reasons.push(`时段任务数将超限（最多 ${slotTaskLimit} 个）`);
 
   const fatigueAfter = (ctx.weeklyFatigue.get(staff.id) ?? 0) + project.fatigueScore;
   if (fatigueAfter > staff.maxWeeklyFatigue) reasons.push('本周劳累积分将超限');

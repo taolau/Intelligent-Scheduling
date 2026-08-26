@@ -1,14 +1,8 @@
-export const SLOT_LABELS = ['上午', '中午', '下午', '晚上'];
+export const SLOT_LABELS = ['自主安排', '早', '中', '晚'];
 export const STAFF_STATUSES = ['new', 'active', 'left'];
 export const FATIGUE_MAX = 3;
-export const DEFAULT_TIMES = { 上午: '08:00-12:00', 中午: '11:30-13:00', 下午: '13:00-17:00', 晚上: '17:00-21:00' };
-
-export function fillSlotTimes(slots) {
-  return slots.map(s => {
-    const def = (DEFAULT_TIMES[s.label] ?? '').split('-');
-    return { ...s, startTime: s.startTime || def[0] || '', endTime: s.endTime || def[1] || '' };
-  });
-}
+// 数量上限 + 预警阈值：去时间后替代时间冲突，可在配置页「设置」弹窗修改
+export const DEFAULT_SETTINGS = { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2 };
 
 export function createProject(fields = {}) {
   return {
@@ -64,6 +58,7 @@ export function validateProject(p) {
     { cond: p.fatigueScore < 1 || p.fatigueScore > FATIGUE_MAX, field: 'fatigueScore', msg: '劳累指数必须为 1-3' },
     { cond: p.requiredCapacity < 1, field: 'requiredCapacity', msg: '所需人数必须 >= 1' },
     { cond: p.weekDays.some(d => d < 0 || d > 6), field: 'weekDays', msg: '重复星期必须为 0-6' },
+    { cond: p.slots.length === 0, field: 'slots', msg: '至少配置一个时段' },
     { cond: p.slots.some(s => !SLOT_LABELS.includes(s.label)), field: 'slots', msg: '时段标签必须在预置集合内' },
   ]);
   return { valid: errors.length === 0, errors };

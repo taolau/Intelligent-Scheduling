@@ -87,3 +87,35 @@
 - **根因**：`.modal-body` 的 overflow-y:auto 裁剪绝对定位子元素；弹窗内容矮时面板大部分在裁剪区外
 - **解决**：select.js 打开面板时改 `position:fixed` 按 trigger getBoundingClientRect() 视口定位（z-index 提至 1050 浮于 modal 遮罩之上）；底部空间不足自动向上翻转；滚动跟随、resize 关闭
 - **启示**：任何浮层（下拉/气泡）出现在滚动容器内都要考虑 overflow 裁剪，成熟做法是 fixed 定位到视口
+
+## 11. Canvas 绘制必须 × devicePixelRatio + setTransform，否则高分屏模糊
+
+- **报错**：疲劳分析柱状图在高分屏（缩放 >100%）模糊、文字发虚
+- **场景**：analysis.js 用固定缓冲尺寸画 canvas
+- **根因**：canvas 缓冲尺寸 ≠ CSS 显示尺寸 × DPR，浏览器把低分辨率缓冲拉伸到高 DPR 显示
+- **解决**：缓冲 width/height × devicePixelRatio，`ctx.setTransform(dpr,0,0,dpr,0,0)` 后再画；图表容器 flex:1 填满消除下方空白
+- **启示**：任何 canvas 自绘图表必须做 DPR 适配
+
+## 12. file:// 下 File System Access 目录句柄无法跨会话持久化：每次打开需重新选目录
+
+- **报错**：`showDirectoryPicker()` 选中的目录，刷新/重开后句柄丢失，需重新授权
+- **场景**：想实现「指定桌面目录文件持久化」（纯前端 file:// 双击即用）
+- **根因**：FileSystemHandle 持久化依赖 IndexedDB（structured clone 支持句柄）；file:// 下 IndexedDB 永不回调（见#5），localStorage 只能存字符串、句柄序列化后失效。实测：file:// 下 `isSecureContext=true`、showDirectoryPicker/OPFS 均可用，但句柄活不过会话
+- **解决**：接受「每次打开点一次目录」+ localStorage 双写兜底；或引入本地进程（Node/EXE）才能真正固定路径全自动
+- **启示**：纯前端 file:// 下「自动 + 固定路径 + 免授权」不可能三角，方案选型前先认清此边界
+
+## 13. db 内存 Map 索引后：多标签页不同步，同 id 后写覆盖
+
+- **报错**：两个标签页同时打开应用，A 页保存的数据 B 页看不到
+- **场景**：db.js 改为内存 Map 索引后，getAll 不再每次重读 localStorage
+- **根因**：内存 Map 仅在首次访问某 store 时从 localStorage 加载，之后 CRUD 走内存；另一标签页的写只改了它自己的 Map + 落盘，本页 Map 无感知
+- **解决**：单用户单标签页场景无碍（双击即用定位天然单标签）；若需多标签页同步，监听 `storage` 事件触发 Map 重载
+- **启示**：引入内存缓存时明确「是否接受跨标签页不一致」；接受则省一次 JSON.parse，不接受则加 storage 事件
+
+## 14. 样式靠 JS 运行时注入（injectGlobalStyles）→ 刷新时 FOUC 裸闪
+
+- **报错**：每次刷新，左上角侧边栏先以无样式裸 HTML 闪现（通栏宽度、裸文本品牌区、左右双箭头按钮），JS 注入 CSS 后才恢复正常
+- **场景**：theme.js 用 `injectGlobalStyles()` 创建 `<style id="app-theme">` 运行时注入全量样式；index.html 的 `<style>` 只含几条基础规则
+- **根因**：HTML 解析后、JS 模块执行前，依赖 JS 注入的样式未生效 → 静态 HTML 部分（侧边栏）裸渲染
+- **解决**：首屏静态部分（侧边栏整套）的样式内联进 index.html `<style>`，首帧即生效；theme.js 注入同名覆盖作双保险；**两处样式需同步维护**（index.html 首屏段 + theme.js 侧边栏段，注释锚点标记）
+- **启示**：样式全量 JS 注入的应用，静态首屏元素必有 FOUC；首屏可见的静态块样式应内联 HTML 消除

@@ -2,9 +2,9 @@ import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
-import { getCache, saveProject, saveStaff, exportJSON, importJSON } from '../data/store.js';
+import { getCache, saveProject, saveStaff, exportJSON, importJSON, getSettings, saveSettings } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_TIMES, fillSlotTimes } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
 
 function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,6 +28,13 @@ export function renderConfig(container) {
   tabProject.type = 'button';
   tabProject.textContent = '任务管理';
   bar.append(tabStaff, tabProject);
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'btn btn-default btn-sm';
+  settingsBtn.textContent = '设置';
+  settingsBtn.style.marginLeft = 'auto';
+  settingsBtn.onclick = () => settingsDialog();
+  bar.appendChild(settingsBtn);
   container.appendChild(bar);
   const body = document.createElement('div');
   container.appendChild(body);
@@ -233,7 +240,7 @@ async function renderProjects(body) {
   for (const p of projects) {
     const tr = document.createElement('tr');
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
-    const slots = p.slots.map(s => `${s.label} ${s.startTime}-${s.endTime}`).join('；') || '-';
+    const slots = p.slots.map(s => s.startTime ? `${s.label} ${s.startTime}-${s.endTime}` : s.label).join('；') || '-';
     tr.innerHTML = `
       <td><strong>${p.name}</strong></td>
       <td>${'🔥'.repeat(p.fatigueScore)}</td>
@@ -294,16 +301,12 @@ async function editProjectDialog(project) {
   }
   const daysF = field({ label: '重复星期（全不勾 = 一次性任务）', control: daysWrap });
 
-  const slotDefaults = Object.fromEntries(SLOT_LABELS.map(l => {
-    const [start, end] = (DEFAULT_TIMES[l] ?? '08:00-12:00').split('-');
-    return [l, { start, end }];
-  }));
   const slotEditor = rowsEditor({
     label: '时段', addLabel: '＋ 添加时段',
     cols: [
-      { key: 'slot', type: 'timeRange', options: SLOT_LABELS, defaults: slotDefaults },
+      { key: 'slot', type: 'select', options: SLOT_LABELS },
     ],
-    initial: target.slots.map(s => ({ slot: { label: s.label, startTime: s.startTime, endTime: s.endTime } })),
+    initial: target.slots.map(s => ({ slot: s.label })),
   });
 
   const activeSel = createSelect({
@@ -328,7 +331,7 @@ async function editProjectDialog(project) {
       fatigueScore: Number(fatigueSel.value),
       requiredCapacity: Number(capInput.value),
       weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
-      slots: fillSlotTimes(slotEditor.collect()),
+      slots: dedupeSlots(slotEditor.collect().map(r => ({ label: r.slot }))),
       active: activeSel.value === 'true',
     });
     const v = validateProject(draft);
@@ -374,4 +377,53 @@ function jsonRestore() {
     renderConfig(document.querySelector('#view'));
   };
   input.click();
+}
+
+function dedupeSlots(slots) {
+  const seen = new Set();
+  return slots.filter(s => { if (seen.has(s.label)) return false; seen.add(s.label); return true; });
+}
+
+function settingsDialog() {
+  const s = getSettings();
+  const row = (label, input) => {
+    const r = document.createElement('div');
+    r.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:8px;';
+    r.appendChild(document.createTextNode(label));
+    r.appendChild(input);
+    return r;
+  };
+  const num = (v) => {
+    const i = document.createElement('input');
+    i.className = 'input';
+    i.type = 'number';
+    i.min = 1;
+    i.value = v;
+    i.style.maxWidth = '80px';
+    return i;
+  };
+  const dailyInput = num(s.dailyTaskLimit);
+  const slotInput = num(s.slotTaskLimit);
+  const warnInput = num(s.warnDailyCount);
+  const hint = document.createElement('p');
+  hint.style.cssText = 'margin-bottom:12px;color:#6a6178;font-size:13px;';
+  hint.textContent = '数量上限替代时间冲突：一人当天或同一时段的班次数达到上限即禁止再排；接近上限时预警提醒。';
+  const body = document.createElement('div');
+  body.append(hint, row('一人一天最多任务数', dailyInput), row('一人一时段最多任务数', slotInput), row('当天任务数达多少预警', warnInput));
+  const footer = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-primary';
+  saveBtn.textContent = '保存';
+  footer.appendChild(saveBtn);
+  const modal = openModal({ title: '排班设置', body, footer });
+  saveBtn.onclick = () => {
+    saveSettings({
+      dailyTaskLimit: Math.max(1, Number(dailyInput.value) || 1),
+      slotTaskLimit: Math.max(1, Number(slotInput.value) || 1),
+      warnDailyCount: Math.max(1, Number(warnInput.value) || 1),
+    });
+    modal.close();
+    showToast('设置已保存', 'success');
+  };
 }
