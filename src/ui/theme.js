@@ -274,7 +274,7 @@ body { display:flex; height:100vh; overflow:hidden; }
 .sch-card.full { border-color:#bbf7d0; background:#f0fdf4; }
 .sch-title { font-weight:600; font-size:12px; }
 .sch-meta { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#6a6178; }
-.sch-badge { font-size:10px; letter-spacing:-1px; }
+.sch-badge { display:inline-flex; align-items:center; gap:1px; }
 .sch-staff { display:flex; flex-wrap:wrap; }
 .sch-capacity { font-size:11px; color:#d97706; font-weight:500; }
 .sch-capacity.ok { color:#16a34a; }
@@ -289,6 +289,32 @@ body { display:flex; height:100vh; overflow:hidden; }
   transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
 .card:hover { transform:translateY(-2px);
   box-shadow:0 2px 4px rgba(90,29,120,.06), 0 16px 40px rgba(60,12,74,.10); }
+
+/* ===== 配置页卡片网格 ===== */
+.card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:12px; align-items:stretch; }
+.cfg-card { display:flex; flex-direction:column; gap:10px; }
+.cfg-card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.cfg-card-title { font-size:15px; font-weight:600; color:#241f2e; word-break:break-all; }
+.cfg-card-rows { display:flex; flex-direction:column; gap:7px; font-size:13px; }
+.cfg-row { display:flex; align-items:flex-start; gap:8px; }
+.cfg-row .k { flex-shrink:0; min-width:5.5em; color:#6a6178; }
+.cfg-row .v { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+.cfg-card-ops { margin-top:auto; display:flex; justify-content:space-between; align-items:center; gap:8px; padding-top:2px; }
+.grid-empty { padding:28px; text-align:center; color:#9b91a7; font-size:14px; }
+
+/* ===== 开关 ===== */
+.switch-wrap { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:#6a6178; cursor:pointer; user-select:none; }
+.switch-wrap:hover .switch-label { color:#5a1d78; }
+.switch { position:relative; display:inline-flex; width:34px; height:20px; flex-shrink:0; }
+.switch input { position:absolute; inset:0; margin:0; opacity:0; cursor:pointer; z-index:1; }
+.switch .track { position:absolute; inset:0; background:#e0d2ef; border-radius:999px; transition:background-color .18s, box-shadow .18s; }
+.switch .thumb { position:absolute; top:2px; left:2px; width:16px; height:16px; background:#fff; border-radius:50%;
+  box-shadow:0 1px 2px rgba(60,12,74,.25); transition:transform .18s; }
+.switch input:checked + .track { background:#5a1d78; }
+.switch input:checked + .track .thumb { transform:translateX(14px); }
+.switch input:focus-visible + .track { box-shadow:0 0 0 3px rgba(90,29,120,.14); }
+.switch input:disabled { cursor:not-allowed; }
+.switch input:disabled + .track { opacity:.5; }
 
 /* ===== 分段 Tab ===== */
 .seg { display:inline-flex; background:#f4f1f7; border-radius:10px; padding:3px; gap:2px; }

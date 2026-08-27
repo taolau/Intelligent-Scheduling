@@ -5,6 +5,7 @@ import { createSelect } from '../ui/select.js';
 import { getCache, saveProject, saveStaff, exportJSON, importJSON, getSettings, saveSettings } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
+import { ICON_FIRE } from '../ui/icons.js';
 
 function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -15,14 +16,17 @@ const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
 
+const CONFIG_TAB_KEY = 'is_sched:config_tab';
+
 export function renderConfig(container) {
+  const keepTab = document.querySelector('.seg button.active')?.textContent
+    ?? (localStorage.getItem(CONFIG_TAB_KEY) === 'project' ? '任务管理' : '人员管理');
   container.innerHTML = '';
   const bar = document.createElement('div');
   bar.className = 'seg';
   bar.style.marginBottom = '12px';
   const tabStaff = document.createElement('button');
   tabStaff.type = 'button';
-  tabStaff.className = 'active';
   tabStaff.textContent = '人员管理';
   const tabProject = document.createElement('button');
   tabProject.type = 'button';
@@ -38,9 +42,10 @@ export function renderConfig(container) {
   container.appendChild(bar);
   const body = document.createElement('div');
   container.appendChild(body);
-  renderStaffs(body);
-  tabStaff.onclick = () => { setTab(tabStaff, tabProject); renderStaffs(body); };
-  tabProject.onclick = () => { setTab(tabProject, tabStaff); renderProjects(body); };
+  if (keepTab === '任务管理') { tabProject.classList.add('active'); renderProjects(body); }
+  else { tabStaff.classList.add('active'); renderStaffs(body); }
+  tabStaff.onclick = () => { setTab(tabStaff, tabProject); localStorage.setItem(CONFIG_TAB_KEY, 'staff'); renderStaffs(body); };
+  tabProject.onclick = () => { setTab(tabProject, tabStaff); localStorage.setItem(CONFIG_TAB_KEY, 'project'); renderProjects(body); };
 }
 
 function btn(text, active = false, icon = '') {
@@ -60,6 +65,7 @@ function statusBadge(status) {
   const map = {
     active: ['badge-success', '活跃'],
     new: ['badge-primary', '新入'],
+    rest: ['badge-warn', '休假'],
     left: ['badge-muted', '已退出'],
   };
   const [cls, label] = map[status] ?? ['badge-muted', status];
@@ -89,32 +95,64 @@ async function renderStaffs(body) {
   actions.children[4].onclick = () => jsonRestore();
   body.appendChild(actions);
 
-  const card = document.createElement('div');
-  card.className = 'card';
-  const table = document.createElement('table');
-  table.className = 'table';
-  const head = ['姓名', '状态', '可胜任项目', '擅长项目', '不合适项目', '周疲劳上限', '高强度上限', '操作'];
-  table.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
-  const tbody = document.createElement('tbody');
-  table.appendChild(tbody);
-  for (const s of staffs) {
-    const tr = document.createElement('tr');
-    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join(' ') || '-';
-    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join(' ') || '-';
-    tr.innerHTML = `
-      <td><strong>${s.name}</strong></td>
-      <td>${statusBadge(s.status)}</td>
-      <td>${s.allowedProjects.map(id => projName.get(id) ?? id).join(', ') || '-'}</td>
-      <td>${pref}</td>
-      <td>${banned}</td>
-      <td>${s.maxWeeklyFatigue}</td>
-      <td>${s.maxHeavyTaskCount}</td>
-      <td><button type="button" data-edit class="btn btn-default btn-sm">${ICON_EDIT}编辑</button></td>`;
-    tr.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
-    tbody.appendChild(tr);
+  const grid = document.createElement('div');
+  grid.className = 'card-grid';
+  if (!staffs.length) {
+    grid.innerHTML = '<div class="grid-empty">暂无人员，点击「新增人员」添加</div>';
+    grid.firstChild.style.gridColumn = '1 / -1';
   }
-  card.appendChild(table);
-  body.appendChild(card);
+  const sorted = [...staffs].sort((a, b) => {
+    const la = a.status === 'left' ? 1 : 0;
+    const lb = b.status === 'left' ? 1 : 0;
+    if (la !== lb) return la - lb;
+    return (b.joinedAt ?? 0) - (a.joinedAt ?? 0);
+  });
+  for (const s of sorted) {
+    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join('') || '-';
+    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join('') || '-';
+    const allowed = s.allowedProjects.length
+      ? s.allowedProjects.map(id => `<span class="tag">${esc(projName.get(id) ?? id)}</span>`).join('')
+      : '-';
+    const card = document.createElement('div');
+    card.className = 'card cfg-card';
+    card.innerHTML = `
+      <div class="cfg-card-head">
+        <span class="cfg-card-title">${esc(s.name)}</span>
+        ${statusBadge(s.status)}
+      </div>
+      <div class="cfg-card-rows">
+        <div class="cfg-row"><span class="k">可胜任</span><span class="v">${allowed}</span></div>
+        <div class="cfg-row"><span class="k">擅长</span><span class="v">${pref}</span></div>
+        <div class="cfg-row"><span class="k">不合适</span><span class="v">${banned}</span></div>
+        <div class="cfg-row"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></div>
+        <div class="cfg-row"><span class="k">高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></div>
+      </div>
+      <div class="cfg-card-ops">
+        <label class="switch-wrap">
+          <span class="switch-label">${s.status === 'rest' ? '休假中' : '参与排班'}</span>
+          <span class="switch">
+            <input type="checkbox" data-toggle ${s.status !== 'rest' ? 'checked' : ''} ${s.status === 'left' ? 'disabled' : ''}>
+            <span class="track"><span class="thumb"></span></span>
+          </span>
+        </label>
+        <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+      </div>`;
+    card.querySelector('[data-toggle]').onchange = async (e) => {
+      if (s.status === 'left') return;
+      const on = e.target.checked;
+      const status = on ? (s.restFrom ?? 'active') : 'rest';
+      const restFrom = on ? null : (s.status === 'rest' ? s.restFrom : s.status);
+      await saveStaff({ ...s, status, restFrom });
+      const badgeEl = card.querySelector('.cfg-card-head .badge');
+      const labelEl = card.querySelector('.switch-label');
+      if (badgeEl) badgeEl.outerHTML = statusBadge(status);
+      if (labelEl) labelEl.textContent = on ? '参与排班' : '休假中';
+      showToast(on ? '已恢复参与' : '已标记休假', 'success');
+    };
+    card.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
+    grid.appendChild(card);
+  }
+  body.appendChild(grid);
 }
 
 async function editStaffDialog(staff) {
@@ -132,6 +170,7 @@ async function editStaffDialog(staff) {
   const STATUS_META = {
     new: { label: '新入', desc: '新入保护：不参与高强度' },
     active: { label: '活跃', desc: '正常参与排班' },
+    rest: { label: '休假', desc: '休假中：不参与排班，可随时恢复' },
     left: { label: '已退出', desc: '保留历史，不再参与' },
   };
   const statusSel = createSelect({
@@ -194,6 +233,8 @@ async function editStaffDialog(staff) {
       id: target.id,
       name: nameInput.value,
       status: statusSel.value,
+      restFrom: statusSel.value === 'rest' ? (target.restFrom ?? 'active') : null,
+      joinedAt: target.joinedAt,
       allowedProjects: allowedSel.value,
       preferredProjects: preferredEditor.collect(),
       bannedProjects: bannedEditor.collect(),
@@ -229,31 +270,51 @@ async function renderProjects(body) {
   actions.children[2].onclick = () => exportProjects();
   body.appendChild(actions);
 
-  const card = document.createElement('div');
-  card.className = 'card';
-  const table = document.createElement('table');
-  table.className = 'table';
-  const head = ['名称', '劳累指数', '所需人数', '重复星期', '时段', '启用', '操作'];
-  table.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
-  const tbody = document.createElement('tbody');
-  table.appendChild(tbody);
-  for (const p of projects) {
-    const tr = document.createElement('tr');
-    const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
-    const slots = p.slots.map(s => s.startTime ? `${s.label} ${s.startTime}-${s.endTime}` : s.label).join('；') || '-';
-    tr.innerHTML = `
-      <td><strong>${p.name}</strong></td>
-      <td>${'🔥'.repeat(p.fatigueScore)}</td>
-      <td>${p.requiredCapacity}</td>
-      <td>${week}</td>
-      <td>${slots}</td>
-      <td>${activeBadge(p.active)}</td>
-      <td><button type="button" data-edit class="btn btn-default btn-sm">${ICON_EDIT}编辑</button></td>`;
-    tr.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
-    tbody.appendChild(tr);
+  const grid = document.createElement('div');
+  grid.className = 'card-grid';
+  if (!projects.length) {
+    grid.innerHTML = '<div class="grid-empty">暂无任务，点击「新增任务」添加</div>';
+    grid.firstChild.style.gridColumn = '1 / -1';
   }
-  card.appendChild(table);
-  body.appendChild(card);
+  for (const p of projects) {
+    const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
+    const slots = p.slots.map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '-';
+    const card = document.createElement('div');
+    card.className = 'card cfg-card';
+    card.innerHTML = `
+      <div class="cfg-card-head">
+        <span class="cfg-card-title">${esc(p.name)}</span>
+        ${activeBadge(p.active)}
+      </div>
+      <div class="cfg-card-rows">
+        <div class="cfg-row"><span class="k">劳累指数</span><span class="v">${ICON_FIRE.repeat(p.fatigueScore)}</span></div>
+        <div class="cfg-row"><span class="k">所需人数</span><span class="v">${p.requiredCapacity} 人</span></div>
+        <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
+        <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
+      </div>
+      <div class="cfg-card-ops">
+        <label class="switch-wrap">
+          <span class="switch-label">${p.active ? '启用' : '停用'}</span>
+          <span class="switch">
+            <input type="checkbox" data-toggle ${p.active ? 'checked' : ''}>
+            <span class="track"><span class="thumb"></span></span>
+          </span>
+        </label>
+        <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+      </div>`;
+    card.querySelector('[data-toggle]').onchange = async (e) => {
+      const on = e.target.checked;
+      await saveProject({ ...p, active: on });
+      const badgeEl = card.querySelector('.cfg-card-head .badge');
+      const labelEl = card.querySelector('.switch-label');
+      if (badgeEl) badgeEl.outerHTML = activeBadge(on);
+      if (labelEl) labelEl.textContent = on ? '启用' : '停用';
+      showToast(on ? '任务已启用' : '任务已停用', 'success');
+    };
+    card.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
+    grid.appendChild(card);
+  }
+  body.appendChild(grid);
 }
 
 async function editProjectDialog(project) {

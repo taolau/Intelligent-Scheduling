@@ -46,6 +46,21 @@ test('createStaff 带默认值', () => {
   assert.deepEqual(s.bannedProjects, []);
   assert.equal(s.maxWeeklyFatigue, 6);
   assert.equal(s.maxHeavyTaskCount, 1);
+  assert.equal(typeof s.joinedAt, 'number');
+  assert.equal(s.restFrom, null);
+});
+
+test('createStaff rest 状态记录休假前状态', () => {
+  const s = createStaff({ name: '李四', status: 'rest', restFrom: 'new' });
+  assert.equal(s.status, 'rest');
+  assert.equal(s.restFrom, 'new');
+});
+
+test('validateStaff: rest 必须记录 restFrom', () => {
+  const s = createStaff({ name: '张三', status: 'rest' });
+  const r = validateStaff(s);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'status'));
 });
 
 test('SLOT_LABELS 预置四时段标签', () => {

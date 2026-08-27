@@ -36,6 +36,13 @@ test('已退出拒绝', () => {
   assert.equal(r.ok, false);
 });
 
+test('休假拒绝', () => {
+  const s = createStaff({ id: 'S1', name: '张三', status: 'rest', restFrom: 'active' });
+  const r = filterCandidate(s, slot, projectById, base());
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons[0].includes('休假'));
+});
+
 test('新入保护: new 且高强度拒绝', () => {
   const s = createStaff({ id: 'S1', name: '新人', status: 'new' });
   const r = filterCandidate(s, slot, projectById, base());

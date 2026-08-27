@@ -1,5 +1,5 @@
 export const SLOT_LABELS = ['自主安排', '早', '中', '晚'];
-export const STAFF_STATUSES = ['new', 'active', 'left'];
+export const STAFF_STATUSES = ['new', 'active', 'rest', 'left'];
 export const FATIGUE_MAX = 3;
 // 数量上限 + 预警阈值：去时间后替代时间冲突，可在配置页「设置」弹窗修改
 export const DEFAULT_SETTINGS = { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2 };
@@ -26,6 +26,8 @@ export function createStaff(fields = {}) {
     maxWeeklyFatigue: fields.maxWeeklyFatigue ?? 6,
     maxHeavyTaskCount: fields.maxHeavyTaskCount ?? 1,
     status: fields.status ?? 'active',
+    joinedAt: fields.joinedAt ?? Date.now(),   // 加入时间戳，卡片排序用
+    restFrom: fields.restFrom ?? null,         // 休假前状态（'new'|'active'），开关恢复用
   };
 }
 
@@ -67,7 +69,8 @@ export function validateProject(p) {
 export function validateStaff(s) {
   const errors = problems([
     { cond: !s.name, field: 'name', msg: '姓名不能为空' },
-    { cond: !STAFF_STATUSES.includes(s.status), field: 'status', msg: '状态必须为 new/active/left' },
+    { cond: !STAFF_STATUSES.includes(s.status), field: 'status', msg: '状态必须为 new/active/rest/left' },
+    { cond: s.status === 'rest' && !['new', 'active'].includes(s.restFrom), field: 'status', msg: '休假状态需记录休假前状态（new/active）' },
     { cond: s.maxWeeklyFatigue < 1, field: 'maxWeeklyFatigue', msg: '周疲劳上限必须 >= 1' },
     { cond: s.maxHeavyTaskCount < 0, field: 'maxHeavyTaskCount', msg: '高强度次数上限必须 >= 0' },
     { cond: s.bannedProjects.some(b => !b.projectId), field: 'bannedProjects', msg: '不合适项目必须包含 projectId' },

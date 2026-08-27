@@ -10,6 +10,7 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
   const { dailyTaskLimit, slotTaskLimit } = ctx.settings ?? DEFAULT_SETTINGS;
 
   if (staff.status === 'left') reasons.push('已退出，不可排班');
+  if (staff.status === 'rest') reasons.push('休假中，不可排班');
   if (staff.status === 'new' && project.fatigueScore === 3) reasons.push('新入保护：不参与高强度任务');
 
   const banned = staff.bannedProjects.find(b => b.projectId === schedule.projectId);

@@ -10,6 +10,7 @@ import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
 import { exportAttendance } from '../ui/excel.js';
 import { createSelect } from '../ui/select.js';
+import { ICON_FIRE } from '../ui/icons.js';
 
 let currentWeekStart = getWeekStart(todayStr());
 let data = { projects: [], staffs: [], schedules: [], leaves: [] };
@@ -140,7 +141,7 @@ function renderScheduleCard(sch) {
   if (project) {
     const badge = document.createElement('span');
     badge.className = 'sch-badge';
-    badge.textContent = '🔥'.repeat(project.fatigueScore);
+    badge.innerHTML = ICON_FIRE.repeat(project.fatigueScore);
     badge.title = `劳累指数 ${project.fatigueScore}/3`;
     meta.appendChild(badge);
   }

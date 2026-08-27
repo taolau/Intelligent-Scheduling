@@ -41,3 +41,10 @@ test('computeTeamAvg: 排除 left, new 不计入, 只算 active', () => {
   const wf = new Map([['S1', 2], ['S2', 6], ['S3', 9], ['S4', 0]]);
   assert.equal(computeTeamAvg([s1, s2, s3, s4], wf), 4);
 });
+
+test('computeTeamAvg: 排除 rest 休假人员', () => {
+  const s1 = createStaff({ id: 'S1', name: 'A', status: 'active' });
+  const s2 = createStaff({ id: 'S2', name: 'B', status: 'rest', restFrom: 'active' });
+  const wf = new Map([['S1', 2], ['S2', 10]]);
+  assert.equal(computeTeamAvg([s1, s2], wf), 2);
+});
