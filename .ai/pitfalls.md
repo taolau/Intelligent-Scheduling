@@ -119,3 +119,19 @@
 - **根因**：HTML 解析后、JS 模块执行前，依赖 JS 注入的样式未生效 → 静态 HTML 部分（侧边栏）裸渲染
 - **解决**：首屏静态部分（侧边栏整套）的样式内联进 index.html `<style>`，首帧即生效；theme.js 注入同名覆盖作双保险；**两处样式需同步维护**（index.html 首屏段 + theme.js 侧边栏段，注释锚点标记）
 - **启示**：样式全量 JS 注入的应用，静态首屏元素必有 FOUC；首屏可见的静态块样式应内联 HTML 消除
+
+## 15. 重渲染函数读取旧 DOM 状态：必须先读后清空
+
+- **报错**：配置页在「任务管理」tab 操作后重渲染跳回「人员管理」；修复后 tab 高亮错位（内容=任务卡片但高亮=人员管理）
+- **场景**：`renderConfig` 重渲染配置页，需保持用户当前激活 tab
+- **根因**：①`container.innerHTML = ''` 在读取 `.seg button.active` **之前**执行，旧 DOM 已被清空 → keepTab 永远 undefined → 回默认 tab；②即使内容按 keepTab 渲染对了，tab 按钮的 active class 仍硬编码在「人员管理」上 → 内容与高亮不一致
+- **解决**：先读 `const keepTab = document.querySelector('.seg button.active')?.textContent` 再清空容器；active class 按 keepTab 动态分配（内容与高亮同一驱动源）；刷新后停留用 localStorage（is_sched:config_tab）持久化
+- **启示**：任何「重渲染保持状态」的需求，旧状态必须在清空容器**之前**读取；视觉高亮与内容必须由同一变量驱动，禁止硬编码默认
+
+## 16. 高频小交互（开关）勿全量重渲染：hover 动画被重建卡片重触发 → 抖动
+
+- **报错**：点击任务卡「启用/停用」开关，卡片整体抖动/闪烁
+- **场景**：卡片开关 onchange → 保存 → `renderConfig` 全量重建整个配置页 DOM
+- **根因**：重建后鼠标悬停位置生成全新卡片，`.card:hover { transform:translateY(-2px) }` 的 hover 上浮动画在新节点上重新触发；且全页重建（工具栏/所有卡片）本身就有闪烁
+- **解决**：开关切换改**局部更新**——保存数据后只替换卡片头部徽标（outerHTML）与开关标签（textContent），不重建 DOM；编辑弹窗保存等低频操作仍可全量渲染
+- **启示**：高频小交互的即时反馈应局部更新 DOM；只有低频、结构性变更（增删、弹窗保存）才值得全量重渲染；判断标准=鼠标是否仍悬停在该交互目标上
