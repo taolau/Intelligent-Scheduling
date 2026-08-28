@@ -3,8 +3,8 @@ import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
 import { createTimePicker } from '../ui/timepicker.js';
-import { getCache, saveProject, saveStaff, exportJSON, importJSON, getSettings, saveSettings } from '../data/store.js';
-import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
+import { getCache, saveProject, saveStaff, getSettings, saveSettings } from '../data/store.js';
+import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
 import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
 
@@ -87,13 +87,10 @@ async function renderStaffs(body) {
   actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
   actions.append(
     btn('新增人员', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD),
-    btn('JSON 备份', false, ICON_DOWNLOAD), btn('JSON 恢复', false, ICON_UPLOAD),
   );
   actions.children[0].onclick = () => editStaffDialog();
-  actions.children[1].onclick = () => fileDialog(importStaffs, '人员 Excel');
+  actions.children[1].onclick = () => importDialog({ title: '导入人员', handler: importStaffs, template: downloadStaffTemplate });
   actions.children[2].onclick = () => exportStaffs();
-  actions.children[3].onclick = async () => { const blob = new Blob([await exportJSON()], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '排班备份.json'; a.click(); URL.revokeObjectURL(url); };
-  actions.children[4].onclick = () => jsonRestore();
   body.appendChild(actions);
 
   const grid = document.createElement('div');
@@ -232,7 +229,7 @@ async function editStaffDialog(staff) {
   saveBtn.onclick = async () => {
     const draft = createStaff({
       id: target.id,
-      name: nameInput.value,
+      name: nameInput.value.trim(),
       status: statusSel.value,
       restFrom: statusSel.value === 'rest' ? (target.restFrom ?? 'active') : null,
       joinedAt: target.joinedAt,
@@ -253,6 +250,11 @@ async function editStaffDialog(staff) {
       if (byField.preferredProjects) showToast(byField.preferredProjects.join('；'), 'error');
       return;
     }
+    const { staffs } = getCache();
+    if (staffs.some(s => s.id !== target.id && s.name.trim() === draft.name.trim())) {
+      setError(nameF, '已存在同名人员');
+      return;
+    }
     await saveStaff(draft);
     modal.close();
     showToast('已保存', 'success');
@@ -267,7 +269,7 @@ async function renderProjects(body) {
   actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
   actions.append(btn('新增任务', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD));
   actions.children[0].onclick = () => editProjectDialog();
-  actions.children[1].onclick = () => fileDialog(importProjects, '任务 Excel');
+  actions.children[1].onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
   actions.children[2].onclick = () => exportProjects();
   body.appendChild(actions);
 
@@ -417,7 +419,7 @@ async function editProjectDialog(project) {
     }
     const draft = createProject({
       id: target.id,
-      name: nameInput.value,
+      name: nameInput.value.trim(),
       fatigueScore: Number(fatigueSel.value),
       requiredCapacity: Number(capInput.value),
       weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
@@ -437,6 +439,11 @@ async function editProjectDialog(project) {
       if (byField.weekDays) showToast(byField.weekDays.join('；'), 'error');
       return;
     }
+    const { projects } = getCache();
+    if (projects.some(p => p.id !== target.id && p.name.trim() === draft.name.trim())) {
+      setError(nameF, '已存在同名任务');
+      return;
+    }
     await saveProject(draft);
     modal.close();
     showToast('已保存', 'success');
@@ -444,31 +451,38 @@ async function editProjectDialog(project) {
   };
 }
 
-function fileDialog(handler, label) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.xlsx,.xls';
-  input.onchange = async () => {
-    if (!input.files[0]) return;
-    const r = await handler(input.files[0]);
-    showToast(r.message, r.ok ? 'success' : 'error');
-    renderConfig(document.querySelector('#view'));
+function importDialog({ title, handler, template }) {
+  const body = document.createElement('div');
+  const tip = document.createElement('div');
+  tip.className = 'bk-tip';
+  tip.innerHTML = '支持 <b>.xlsx / .xls</b> 文件。可先下载模板，参照示例填写（示例行不会导入）。';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;';
+  const tplBtn = document.createElement('button');
+  tplBtn.type = 'button';
+  tplBtn.className = 'btn btn-default';
+  tplBtn.innerHTML = `${ICON_DOWNLOAD}<span>下载模板</span>`;
+  tplBtn.onclick = () => { template(); showToast('模板已下载', 'success'); };
+  const fileBtn = document.createElement('button');
+  fileBtn.type = 'button';
+  fileBtn.className = 'btn btn-primary';
+  fileBtn.innerHTML = `${ICON_UPLOAD}<span>选择文件导入</span>`;
+  row.append(tplBtn, fileBtn);
+  body.append(tip, row);
+  const modal = openModal({ title, body });
+  fileBtn.onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = async () => {
+      if (!input.files[0]) return;
+      const r = await handler(input.files[0]);
+      showToast(r.message, r.ok ? 'success' : 'error');
+      modal.close();
+      renderConfig(document.querySelector('#view'));
+    };
+    input.click();
   };
-  input.click();
-}
-
-function jsonRestore() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = async () => {
-    if (!input.files[0]) return;
-    const text = await input.files[0].text();
-    const r = await importJSON(text);
-    showToast(r.message, r.ok ? 'success' : 'error');
-    renderConfig(document.querySelector('#view'));
-  };
-  input.click();
 }
 
 function dedupeSlots(slots) {

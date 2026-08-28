@@ -39,7 +39,7 @@ export async function renderCalendar(container) {
   label.className = 'week-label';
   label.textContent = getWeekLabel(currentWeekStart);
   const todayBtn = btn('今天');
-  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK), exportBtn = btn('导出考勤', false, false, ICON_EXPORT);
+  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK), exportBtn = btn('导出排班表', false, false, ICON_EXPORT);
   left.append(prev, label, next, todayBtn);
   right.append(autoBtn, bulkBtn, exportBtn);
   bar.append(left, right);
