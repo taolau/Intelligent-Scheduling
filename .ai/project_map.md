@@ -33,6 +33,7 @@ Intelligent-Scheduling/
 | | `icons.js` | 共享 SVG 图标常量（ICON_FIRE 劳累指数火焰等） | 无 |
 | | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | select |
 | | `select.js` | 自定义下拉：createSelect 单选/多选统一组件，el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
+| | `timepicker.js` | 时间选择器：createTimePicker 点击整个框弹时/分双列面板（小时 00-23、分钟 00-59，选分钟自动收起），el.value 返回 'HH:mm' 或 '' | theme |
 | | `modal.js` | 弹窗（替补推荐等） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
