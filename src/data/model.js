@@ -13,6 +13,7 @@ export function createProject(fields = {}) {
     weekDays: fields.weekDays ?? [],
     slots: fields.slots ?? [],
     active: fields.active ?? true,
+    timeRange: fields.timeRange ?? null, // 选填执行窗口 {start,end} HH:mm，仅展示不参与算法
   };
 }
 
@@ -54,6 +55,11 @@ function problems(checks) {
   return checks.filter(c => c.cond).map(c => ({ field: c.field, msg: c.msg }));
 }
 
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+export function isValidTimeRange(tr) {
+  return !!tr && HHMM.test(tr.start) && HHMM.test(tr.end) && tr.start < tr.end;
+}
+
 export function validateProject(p) {
   const errors = problems([
     { cond: !p.name, field: 'name', msg: '任务名不能为空' },
@@ -62,6 +68,7 @@ export function validateProject(p) {
     { cond: p.weekDays.some(d => d < 0 || d > 6), field: 'weekDays', msg: '重复星期必须为 0-6' },
     { cond: p.slots.length === 0, field: 'slots', msg: '至少配置一个时段' },
     { cond: p.slots.some(s => !SLOT_LABELS.includes(s.label)), field: 'slots', msg: '时段标签必须在预置集合内' },
+    { cond: p.timeRange != null && !isValidTimeRange(p.timeRange), field: 'timeRange', msg: '时间段范围需为 HH:mm 且结束晚于开始' },
   ]);
   return { valid: errors.length === 0, errors };
 }

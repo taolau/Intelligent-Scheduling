@@ -2,10 +2,11 @@ import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
+import { createTimePicker } from '../ui/timepicker.js';
 import { getCache, saveProject, saveStaff, exportJSON, importJSON, getSettings, saveSettings } from '../data/store.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
-import { ICON_FIRE } from '../ui/icons.js';
+import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
 
 function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -291,6 +292,7 @@ async function renderProjects(body) {
         <div class="cfg-row"><span class="k">所需人数</span><span class="v">${p.requiredCapacity} 人</span></div>
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
+        ${p.timeRange ? `<div class="cfg-row"><span class="k">时间段</span><span class="v">${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}</span></div>` : ''}
       </div>
       <div class="cfg-card-ops">
         <label class="switch-wrap">
@@ -370,13 +372,32 @@ async function editProjectDialog(project) {
     initial: target.slots.map(s => ({ slot: s.label })),
   });
 
+  const timeStart = createTimePicker({ value: target.timeRange?.start ?? '' });
+  const timeEnd = createTimePicker({ value: target.timeRange?.end ?? '' });
+  const timeRow = document.createElement('div');
+  timeRow.style.cssText = 'display:flex;gap:10px;align-items:center;';
+  timeStart.style.flex = '1';
+  timeEnd.style.flex = '1';
+  const timeArrow = document.createElement('span');
+  timeArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#9b91a7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg>';
+  timeRow.append(timeStart, timeArrow, timeEnd);
+  const timeF = field({ label: '时间段范围（选填，仅展示）', control: timeRow });
+  function syncTimeError() {
+    const s = timeStart.value;
+    const e = timeEnd.value;
+    if (s && e && s >= e) setError(timeF, '结束时间需晚于开始时间');
+    else setError(timeF, '');
+  }
+  timeStart.addEventListener('change', syncTimeError);
+  timeEnd.addEventListener('change', syncTimeError);
+
   const activeSel = createSelect({
     options: [{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }],
     value: String(target.active),
   });
   const activeF = field({ label: '启用状态', control: activeSel });
 
-  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, activeF.wrap);
+  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, timeF.wrap, activeF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -386,6 +407,14 @@ async function editProjectDialog(project) {
   const modal = openModal({ title: project ? '编辑任务' : '新增任务', body, footer });
 
   saveBtn.onclick = async () => {
+    const start = timeStart.value;
+    const end = timeEnd.value;
+    if (start || end) {
+      if (!start || !end) {
+        setError(timeF, '开始与结束时间需同时填写');
+        return;
+      }
+    }
     const draft = createProject({
       id: target.id,
       name: nameInput.value,
@@ -394,6 +423,7 @@ async function editProjectDialog(project) {
       weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
       slots: dedupeSlots(slotEditor.collect().map(r => ({ label: r.slot }))),
       active: activeSel.value === 'true',
+      timeRange: start && end ? { start, end } : null,
     });
     const v = validateProject(draft);
     if (!v.valid) {
@@ -402,6 +432,7 @@ async function editProjectDialog(project) {
       setError(nameF, byField.name?.join('；') || '');
       setError(fatigueF, byField.fatigueScore?.join('；') || '');
       setError(capF, byField.requiredCapacity?.join('；') || '');
+      setError(timeF, byField.timeRange?.join('；') || '');
       if (byField.slots) showToast(byField.slots.join('；'), 'error');
       if (byField.weekDays) showToast(byField.weekDays.join('；'), 'error');
       return;

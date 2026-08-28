@@ -10,6 +10,7 @@ test('createProject 带默认值', () => {
   assert.deepEqual(p.weekDays, []);
   assert.deepEqual(p.slots, []);
   assert.equal(p.active, true);
+  assert.equal(p.timeRange, null);
 });
 
 test('validateProject: 非法劳累指数', () => {
@@ -36,6 +37,45 @@ test('validateProject: 自主安排时段（无时间）合法', () => {
   const p = createProject({ name: '浇花', slots: [{ label: '自主安排' }] });
   const r = validateProject(p);
   assert.equal(r.valid, true);
+});
+
+test('validateProject: timeRange 选填，不填合法', () => {
+  const p = createProject({ name: 'X', slots: [{ label: '早' }], timeRange: null });
+  const r = validateProject(p);
+  assert.equal(r.valid, true);
+});
+
+test('validateProject: timeRange 起止合法（start < end）通过', () => {
+  const p = createProject({ name: 'X', slots: [{ label: '早' }], timeRange: { start: '08:00', end: '18:00' } });
+  const r = validateProject(p);
+  assert.equal(r.valid, true);
+});
+
+test('validateProject: timeRange 起止相等或倒挂拒绝', () => {
+  const bad = [
+    { start: '08:00', end: '08:00' },
+    { start: '18:00', end: '08:00' },
+  ];
+  for (const tr of bad) {
+    const p = createProject({ name: 'X', slots: [{ label: '早' }], timeRange: tr });
+    const r = validateProject(p);
+    assert.equal(r.valid, false);
+    assert.ok(r.errors.some(e => e.field === 'timeRange'), `应报 timeRange 错误: ${JSON.stringify(tr)}`);
+  }
+});
+
+test('validateProject: timeRange 非法格式拒绝', () => {
+  const bad = [
+    { start: '8:00', end: '18:00' },
+    { start: '25:00', end: '18:00' },
+    { start: '08:60', end: '18:00' },
+    { start: '08:00', end: '18:00:00' },
+  ];
+  for (const tr of bad) {
+    const p = createProject({ name: 'X', slots: [{ label: '早' }], timeRange: tr });
+    const r = validateProject(p);
+    assert.equal(r.valid, false, `应拒绝: ${JSON.stringify(tr)}`);
+  }
 });
 
 test('createStaff 带默认值', () => {

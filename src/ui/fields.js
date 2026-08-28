@@ -63,8 +63,9 @@ export function rowsEditor({ label, addLabel, cols, initial = [] }) {
     }
     const del = document.createElement('button');
     del.type = 'button';
-    del.className = 'btn btn-ghost btn-sm';
-    del.textContent = '×';
+    del.className = 'btn btn-ghost btn-sm row-del';
+    del.title = '删除此行';
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;display:block"><path d="M18 6L6 18M6 6l12 12"/></svg>';
     del.onclick = () => row.remove();
     row.appendChild(del);
     return row;
