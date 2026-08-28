@@ -1,8 +1,8 @@
-export function openModal({ title, body, footer }) {
+export function openModal({ title, body, footer, boxClass = '' }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const box = document.createElement('div');
-  box.className = 'modal-box';
+  box.className = `modal-box${boxClass ? ` ${boxClass}` : ''}`;
   const header = document.createElement('div');
   header.className = 'modal-header';
   header.textContent = title;
