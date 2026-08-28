@@ -1,9 +1,9 @@
-import { expandWeek, expandWeeks } from '../core/expand.js';
+import { expandWeeks } from '../core/expand.js';
 import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
-import { getCache, saveSchedule, saveLeave, getSettings } from '../data/store.js';
+import { getCache, saveSchedule, saveLeave, getSettings, removeSchedule } from '../data/store.js';
 import { createSchedule, createLeave, SLOT_LABELS } from '../data/model.js';
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
@@ -22,22 +22,8 @@ const ICON_ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>';
 const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 
-// 确保本周班次已展开并持久化
-async function ensureExpanded() {
-  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  const expected = expandWeek(data.projects, currentWeekStart, createSchedule);
-  const existing = new Set(data.schedules.map(s => `${s.date}|${s.projectId}|${s.slotLabel}`));
-  for (const sch of expected) {
-    if (!existing.has(`${sch.date}|${sch.projectId}|${sch.slotLabel}`)) {
-      await saveSchedule(sch);
-    }
-  }
-  data = getCache();
-}
-
 export async function renderCalendar(container) {
   data = getCache();
-  await ensureExpanded();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById, getSettings());
 
@@ -100,6 +86,15 @@ export async function renderCalendar(container) {
       for (const sch of cellSchedules) {
         cell.appendChild(renderScheduleCard(sch));
       }
+      if (cellSchedules.length > 0) {
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'cal-add';
+        addBtn.title = '再建一个班次';
+        addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>';
+        addBtn.onclick = () => manualCreate(date, slotLabel);
+        cell.appendChild(addBtn);
+      }
       enableDrop(cell, { onDrop: (e) => dropStaff(e, cell) });
       grid.appendChild(cell);
     }
@@ -130,6 +125,8 @@ function renderScheduleCard(sch) {
   const filled = sch.staffIds.length;
   if (filled >= capacity) card.classList.add('full');
   else if (filled > 0) card.classList.add('short');
+  card.title = '点击手动分配人员';
+  card.onclick = () => scheduleDialog(sch);
 
   const title = document.createElement('div');
   title.textContent = `${project?.name ?? sch.projectId}`;
@@ -139,6 +136,12 @@ function renderScheduleCard(sch) {
   const meta = document.createElement('div');
   meta.className = 'sch-meta';
   if (project) {
+    if (project.timeRange) {
+      const time = document.createElement('span');
+      time.className = 'sch-time';
+      time.textContent = `${project.timeRange.start}–${project.timeRange.end}`;
+      meta.appendChild(time);
+    }
     const badge = document.createElement('span');
     badge.className = 'sch-badge';
     badge.innerHTML = ICON_FIRE.repeat(project.fatigueScore);
@@ -156,7 +159,7 @@ function renderScheduleCard(sch) {
     chip.className = staffChipClass(staff, sch.date);
     chip.title = staffChipTitle(staff, sch.date);
     enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
-    chip.onclick = () => staffDialog(staff, sch);
+    chip.onclick = (e) => { e.stopPropagation(); staffDialog(staff, sch); };
     names.appendChild(chip);
   }
   card.appendChild(names);
@@ -166,6 +169,184 @@ function renderScheduleCard(sch) {
   cap.textContent = filled >= capacity ? '已满' : (filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`);
   card.appendChild(cap);
   return card;
+}
+
+function scheduleDialog(sch) {
+  const project = data.projects.find(p => p.id === sch.projectId);
+  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+  const capacity = project?.requiredCapacity ?? 1;
+  const body = document.createElement('div');
+  const footer = document.createElement('div');
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'btn btn-danger';
+  delBtn.style.marginRight = 'auto';
+  delBtn.textContent = '删除班次';
+  delBtn.title = '删除该班次，已排人员计数自动回退';
+  let confirmTimer = null;
+  delBtn.onclick = () => {
+    if (delBtn.textContent !== '确认删除？') {
+      delBtn.textContent = '确认删除？';
+      delBtn.classList.add('confirming');
+      confirmTimer = setTimeout(() => {
+        delBtn.textContent = '删除班次';
+        delBtn.classList.remove('confirming');
+      }, 3000);
+      return;
+    }
+    clearTimeout(confirmTimer);
+    delBtn.disabled = true;
+    delBtn.textContent = '删除中…';
+    deleteSchedule();
+  };
+  footer.appendChild(delBtn);
+  const modal = openModal({ title: '排班分配', body, footer });
+
+  async function deleteSchedule() {
+    for (const sid of sch.staffIds) {
+      ctx.weeklyFatigue.set(sid, Math.max(0, (ctx.weeklyFatigue.get(sid) ?? 0) - (project?.fatigueScore ?? 0)));
+      if (project?.fatigueScore === 3) ctx.heavyCounts.set(sid, Math.max(0, (ctx.heavyCounts.get(sid) ?? 0) - 1));
+      const dKey = `${sid}|${sch.date}`;
+      const sKey = `${sid}|${sch.date}|${sch.slotLabel}`;
+      ctx.dailyCounts.set(dKey, Math.max(0, (ctx.dailyCounts?.get(dKey) ?? 0) - 1));
+      ctx.slotCounts.set(sKey, Math.max(0, (ctx.slotCounts?.get(sKey) ?? 0) - 1));
+    }
+    await removeSchedule(sch.id);
+    modal.close();
+    showToast('班次已删除', 'success');
+    renderCalendar(document.querySelector('#view'));
+  }
+
+  function renderBody() {
+    body.innerHTML = '';
+    const filled = sch.staffIds.length;
+    const full = filled >= capacity;
+
+    const head = document.createElement('div');
+    head.className = 'asg-head';
+    const titleRow = document.createElement('div');
+    titleRow.className = 'asg-title';
+    titleRow.innerHTML = `<span>${project?.name ?? sch.projectId}</span>${project ? `<span class="sch-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
+    const sub = document.createElement('div');
+    sub.className = 'asg-sub';
+    sub.innerHTML = `${sch.date} · ${sch.slotLabel}${project?.timeRange ? ` · ${project.timeRange.start}–${project.timeRange.end}` : ''}`;
+    head.append(titleRow, sub);
+
+    const progress = document.createElement('div');
+    progress.className = 'asg-progress';
+    const bar = document.createElement('div');
+    bar.className = `asg-bar${full ? ' full' : ''}`;
+    const fillEl = document.createElement('div');
+    fillEl.className = 'asg-fill';
+    fillEl.style.width = `${Math.min(100, (filled / capacity) * 100)}%`;
+    bar.appendChild(fillEl);
+    const label = document.createElement('span');
+    label.className = 'asg-progress-label';
+    label.textContent = full ? `✓ 已满员 ${filled}/${capacity}` : `已排 ${filled}/${capacity} 人`;
+    progress.append(bar, label);
+
+    const filledSec = document.createElement('div');
+    filledSec.className = 'asg-section';
+    filledSec.textContent = '已排人员';
+    const chips = document.createElement('div');
+    chips.className = 'asg-chips';
+    if (filled === 0) {
+      const empty = document.createElement('span');
+      empty.className = 'asg-empty';
+      empty.textContent = '暂无人员，从下方选择加入';
+      chips.appendChild(empty);
+    }
+    for (const sid of sch.staffIds) {
+      const staff = data.staffs.find(s => s.id === sid);
+      const chip = document.createElement('span');
+      chip.className = 'asg-chip';
+      const chipName = document.createElement('span');
+      chipName.textContent = staff?.name ?? sid;
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'asg-chip-x';
+      rm.title = '移除';
+      rm.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      rm.onclick = async () => {
+        sch.staffIds = sch.staffIds.filter(id => id !== sid);
+        ctx.weeklyFatigue.set(sid, Math.max(0, (ctx.weeklyFatigue.get(sid) ?? 0) - project.fatigueScore));
+        if (project.fatigueScore === 3) ctx.heavyCounts.set(sid, Math.max(0, (ctx.heavyCounts.get(sid) ?? 0) - 1));
+        const dailyKey = `${sid}|${sch.date}`;
+        const slotKey = `${sid}|${sch.date}|${sch.slotLabel}`;
+        ctx.dailyCounts.set(dailyKey, Math.max(0, (ctx.dailyCounts?.get(dailyKey) ?? 0) - 1));
+        ctx.slotCounts.set(slotKey, Math.max(0, (ctx.slotCounts?.get(slotKey) ?? 0) - 1));
+        await saveSchedule(sch);
+        renderBody();
+        renderCalendar(document.querySelector('#view'));
+      };
+      chip.append(chipName, rm);
+      chips.appendChild(chip);
+    }
+
+    const listSec = document.createElement('div');
+    listSec.className = 'asg-section';
+    listSec.textContent = '可选人员';
+    const list = document.createElement('div');
+    if (full) {
+      const done = document.createElement('div');
+      done.className = 'asg-full';
+      done.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M20 6L9 17l-5-5"/></svg>本班次已满员';
+      list.appendChild(done);
+    }
+    for (const s of data.staffs) {
+      if (sch.staffIds.includes(s.id)) continue;
+      const res = filterCandidate(s, sch, projectById, ctx);
+      const row = document.createElement('div');
+      row.className = 'assign-row';
+      const name = document.createElement('span');
+      name.className = 'assign-name';
+      name.textContent = s.name;
+      if (s.status === 'new') {
+        const tag = document.createElement('span');
+        tag.className = 'assign-tag';
+        tag.textContent = '新入';
+        name.appendChild(tag);
+      }
+      const info = document.createElement('span');
+      info.className = 'assign-info';
+      info.textContent = `周疲劳 ${ctx.weeklyFatigue.get(s.id) ?? 0}/${s.maxWeeklyFatigue}`;
+      row.append(name, info);
+      if (!res.ok) {
+        row.classList.add('blocked');
+        const why = document.createElement('span');
+        why.className = 'assign-why';
+        why.textContent = res.reasons.join('；');
+        row.append(why);
+      } else {
+        row.classList.add('pickable');
+        const addHint = document.createElement('span');
+        addHint.className = 'assign-add';
+        addHint.textContent = '＋ 添加';
+        row.appendChild(addHint);
+        row.onclick = async () => {
+          sch.staffIds.push(s.id);
+          const dailyKey = `${s.id}|${sch.date}`;
+          const slotKey = `${s.id}|${sch.date}|${sch.slotLabel}`;
+          const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
+          ctx.dailyCounts.set(dailyKey, dailyAfter);
+          ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
+          ctx.weeklyFatigue.set(s.id, (ctx.weeklyFatigue.get(s.id) ?? 0) + project.fatigueScore);
+          if (project.fatigueScore === 3) ctx.heavyCounts.set(s.id, (ctx.heavyCounts.get(s.id) ?? 0) + 1);
+          await saveSchedule(sch);
+          if ((ctx.settings?.warnDailyCount ?? 0) > 0 && dailyAfter >= ctx.settings.warnDailyCount) {
+            showToast(`${s.name} 当日已达预警阈值 ${ctx.settings.warnDailyCount} 个任务`, 'info');
+          } else {
+            showToast(`${s.name} 已加入`, 'success');
+          }
+          renderBody();
+          renderCalendar(document.querySelector('#view'));
+        };
+      }
+      list.appendChild(row);
+    }
+    body.append(head, progress, filledSec, chips, listSec, list);
+  }
+  renderBody();
 }
 
 function staffChipClass(staff, date) {
@@ -196,17 +377,60 @@ async function dropStaff(e, cell) {
   const staff = data.staffs.find(s => s.id === staffId);
   const pseudoSchedule = { date: targetDate, projectId: targetProject.id, slotLabel: targetSlot };
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  const res = filterCandidate(staff, pseudoSchedule, projectById, ctx);
-  if (!res.ok) { showToast(res.reasons.join('；'), 'error'); return; }
 
   const from = data.schedules.find(s => s.id === scheduleId);
   const to = data.schedules.find(s => s.date === targetDate && s.slotLabel === targetSlot);
   if (!to) { showToast('目标格无班次，请先手动建班次', 'error'); return; }
+
+  // 拖拽是"移动"而非"新增"：校验基于"移走源班次后"的计数快照，避免误报超限
+  const ctxAfterMove = {
+    ...ctx,
+    weeklyFatigue: new Map(ctx.weeklyFatigue),
+    heavyCounts: new Map(ctx.heavyCounts),
+    dailyCounts: new Map(ctx.dailyCounts),
+    slotCounts: new Map(ctx.slotCounts),
+  };
+  if (from && from.staffIds.includes(staffId)) {
+    const fromProject = data.projects.find(p => p.id === from.projectId);
+    ctxAfterMove.weeklyFatigue.set(staffId, Math.max(0, (ctxAfterMove.weeklyFatigue.get(staffId) ?? 0) - (fromProject?.fatigueScore ?? 0)));
+    if (fromProject?.fatigueScore === 3) ctxAfterMove.heavyCounts.set(staffId, Math.max(0, (ctxAfterMove.heavyCounts.get(staffId) ?? 0) - 1));
+    const fDailyKey = `${staffId}|${from.date}`;
+    const fSlotKey = `${staffId}|${from.date}|${from.slotLabel}`;
+    ctxAfterMove.dailyCounts.set(fDailyKey, Math.max(0, (ctxAfterMove.dailyCounts?.get(fDailyKey) ?? 0) - 1));
+    ctxAfterMove.slotCounts.set(fSlotKey, Math.max(0, (ctxAfterMove.slotCounts?.get(fSlotKey) ?? 0) - 1));
+  }
+  const res = filterCandidate(staff, pseudoSchedule, projectById, ctxAfterMove);
+  if (!res.ok) { showToast(res.reasons.join('；'), 'error'); return; }
+
+  const toProject = data.projects.find(p => p.id === to.projectId);
+  if (!to.staffIds.includes(staffId) && to.staffIds.length >= (toProject?.requiredCapacity ?? 1)) {
+    showToast('目标班次已满员', 'error'); return;
+  }
+
   if (from && from.staffIds.includes(staffId)) {
     from.staffIds = from.staffIds.filter(id => id !== staffId);
+    const fromProject = data.projects.find(p => p.id === from.projectId);
+    ctx.weeklyFatigue.set(staffId, Math.max(0, (ctx.weeklyFatigue.get(staffId) ?? 0) - (fromProject?.fatigueScore ?? 0)));
+    if (fromProject?.fatigueScore === 3) ctx.heavyCounts.set(staffId, Math.max(0, (ctx.heavyCounts.get(staffId) ?? 0) - 1));
+    const fDailyKey = `${staffId}|${from.date}`;
+    const fSlotKey = `${staffId}|${from.date}|${from.slotLabel}`;
+    ctx.dailyCounts.set(fDailyKey, Math.max(0, (ctx.dailyCounts?.get(fDailyKey) ?? 0) - 1));
+    ctx.slotCounts.set(fSlotKey, Math.max(0, (ctx.slotCounts?.get(fSlotKey) ?? 0) - 1));
     await saveSchedule(from);
   }
   to.staffIds = [...new Set([...to.staffIds, staffId])];
+  const tDailyKey = `${staffId}|${to.date}`;
+  const tSlotKey = `${staffId}|${to.date}|${to.slotLabel}`;
+  const dailyAfter = (ctx.dailyCounts?.get(tDailyKey) ?? 0) + 1;
+  ctx.dailyCounts.set(tDailyKey, dailyAfter);
+  ctx.slotCounts.set(tSlotKey, (ctx.slotCounts?.get(tSlotKey) ?? 0) + 1);
+  ctx.weeklyFatigue.set(staffId, (ctx.weeklyFatigue.get(staffId) ?? 0) + (toProject?.fatigueScore ?? 0));
+  if (toProject?.fatigueScore === 3) ctx.heavyCounts.set(staffId, (ctx.heavyCounts.get(staffId) ?? 0) + 1);
+  if ((ctx.settings?.warnDailyCount ?? 0) > 0 && dailyAfter >= ctx.settings.warnDailyCount) {
+    showToast(`${staff.name} 当日已达预警阈值 ${ctx.settings.warnDailyCount} 个任务`, 'info');
+  } else {
+    showToast(`${staff.name} 已调整至 ${toProject?.name ?? ''} ${to.slotLabel}`, 'success');
+  }
   await saveSchedule(to);
   renderCalendar(document.querySelector('#view'));
 }
