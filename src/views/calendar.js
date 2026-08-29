@@ -21,6 +21,8 @@ const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>';
 const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>';
 const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
+const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
 
 export async function renderCalendar(container) {
   data = getCache();
@@ -57,56 +59,54 @@ export async function renderCalendar(container) {
   const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const dates = getWeekDates(currentWeekStart);
   const today = todayStr();
-  grid.appendChild(corner('时段', 'cal-date'));
-  dates.forEach((d, i) => {
-    const c = corner(`${weekdayNames[i]}<br><b>${d.slice(5)}</b>`, 'cal-date');
-    if (d === today) { c.classList.add('cal-today'); c.title = '今天'; }
-    grid.appendChild(c);
-  });
 
-  for (const slotLabel of SLOT_LABELS) {
-    const slot = document.createElement('div');
-    slot.className = 'cal-corner cal-slot';
-    slot.textContent = slotLabel;
-    grid.appendChild(slot);
-    for (const date of dates) {
-      const cell = document.createElement('div');
-      cell.className = `cal-cell${date === today ? ' cal-col-today' : ''}`;
-      cell.dataset.date = date;
-      cell.dataset.slot = slotLabel;
-      const cellSchedules = data.schedules.filter(s => s.date === date && s.slotLabel === slotLabel);
-      if (cellSchedules.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'cal-cell empty';
-        empty.innerHTML = '<span class="plus">＋</span>建班次';
-        empty.title = '为此时段创建班次';
-        empty.onclick = () => manualCreate(date, slotLabel);
-        cell.appendChild(empty);
-      }
-      for (const sch of cellSchedules) {
-        cell.appendChild(renderScheduleCard(sch));
-      }
-      if (cellSchedules.length > 0) {
-        const addBtn = document.createElement('button');
-        addBtn.type = 'button';
-        addBtn.className = 'cal-add';
-        addBtn.title = '再建一个班次';
-        addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>';
-        addBtn.onclick = () => manualCreate(date, slotLabel);
-        cell.appendChild(addBtn);
-      }
-      enableDrop(cell, { onDrop: (e) => dropStaff(e, cell) });
-      grid.appendChild(cell);
-    }
+  // 按「日期|时段」预分组，避免逐格 O(n²) 过滤
+  const byKey = new Map();
+  for (const s of data.schedules) {
+    const key = `${s.date}|${s.slotLabel}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(s);
   }
-  container.appendChild(grid);
-}
 
-function corner(text, extra = '') {
-  const c = document.createElement('div');
-  c.innerHTML = text;
-  c.className = `cal-corner${extra ? ' ' + extra : ''}`;
-  return c;
+  dates.forEach((d, i) => {
+    const col = document.createElement('div');
+    col.className = 'cal-col';
+
+    const head = document.createElement('div');
+    head.className = `cal-date${d === today ? ' cal-today' : ''}`;
+    head.innerHTML = `${weekdayNames[i]}<br><b>${d.slice(5)}</b>`;
+    if (d === today) {
+      head.title = '今天';
+      head.insertAdjacentHTML('beforeend', ICON_TODAY_FLAG);
+    }
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'cal-add-day';
+    addBtn.title = '为此日创建班次';
+    addBtn.innerHTML = ICON_ADD;
+    addBtn.onclick = () => manualCreate(d);
+    head.appendChild(addBtn);
+    col.appendChild(head);
+
+    SLOT_LABELS.forEach((slotLabel, si) => {
+      const scheds = byKey.get(`${d}|${slotLabel}`);
+      if (!scheds || scheds.length === 0) return;
+      const slotCard = document.createElement('div');
+      slotCard.className = `cal-slot-card cal-slot-${si}`;
+      slotCard.dataset.date = d;
+      slotCard.dataset.slot = slotLabel;
+      const chip = document.createElement('span');
+      chip.className = 'cal-slot-chip';
+      chip.textContent = slotLabel;
+      slotCard.appendChild(chip);
+      for (const sch of scheds) slotCard.appendChild(renderScheduleCard(sch));
+      enableDrop(slotCard, { onDrop: (e) => dropStaff(e, slotCard) });
+      col.appendChild(slotCard);
+    });
+
+    grid.appendChild(col);
+  });
+  container.appendChild(grid);
 }
 
 function btn(text, active = false, plain = false, icon = '', iconAfter = false) {
@@ -167,7 +167,19 @@ function renderScheduleCard(sch) {
   const cap = document.createElement('div');
   cap.className = `sch-capacity${filled >= capacity ? ' ok' : ''}`;
   cap.textContent = filled >= capacity ? '已满' : (filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`);
-  card.appendChild(cap);
+  if (filled === 0) {
+    const row = document.createElement('div');
+    row.className = 'sch-cap-row';
+    const smart = document.createElement('button');
+    smart.type = 'button';
+    smart.className = 'sch-smart';
+    smart.textContent = '＋ 智能排班';
+    smart.onclick = (e) => { e.stopPropagation(); smartFillOne(sch); };
+    row.append(cap, smart);
+    card.appendChild(row);
+  } else {
+    card.appendChild(cap);
+  }
   return card;
 }
 
@@ -443,6 +455,45 @@ function shiftWeek(days) {
   renderCalendar(document.querySelector('#view'));
 }
 
+async function fillSchedule(sch) {
+  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+  const project = projectById[sch.projectId];
+  let filled = 0;
+  const warned = [];
+  const warnDaily = ctx.settings?.warnDailyCount ?? 0;
+  while (sch.staffIds.length < project.requiredCapacity) {
+    const candidates = data.staffs
+      .filter(s => !sch.staffIds.includes(s.id))
+      .map(s => ({ s, res: filterCandidate(s, sch, projectById, ctx) }))
+      .filter(x => x.res.ok);
+    if (candidates.length === 0) break;
+    let best = null;
+    for (const c of candidates) {
+      const { score } = scoreCandidate(c.s, sch, projectById, ctx);
+      if (!best || score > best.score) best = { s: c.s, score };
+    }
+    sch.staffIds.push(best.s.id);
+    const dailyKey = `${best.s.id}|${sch.date}`;
+    const slotKey = `${best.s.id}|${sch.date}|${sch.slotLabel}`;
+    const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
+    ctx.dailyCounts.set(dailyKey, dailyAfter);
+    ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
+    ctx.weeklyFatigue.set(best.s.id, (ctx.weeklyFatigue.get(best.s.id) ?? 0) + project.fatigueScore);
+    if (project.fatigueScore === 3) ctx.heavyCounts.set(best.s.id, (ctx.heavyCounts.get(best.s.id) ?? 0) + 1);
+    if (warnDaily > 0 && dailyAfter >= warnDaily) warned.push(best.s.id);
+    await saveSchedule(sch);
+    filled++;
+  }
+  return { filled, warned };
+}
+
+async function smartFillOne(sch) {
+  const { filled, warned } = await fillSchedule(sch);
+  const warnMsg = warned.map(id => data.staffs.find(s => s.id === id)?.name ?? id).join('、');
+  showToast(warnMsg ? `已填充 ${filled} 个名额；${warnMsg} 当日已达预警阈值` : `已填充 ${filled} 个名额`, filled ? 'success' : 'info');
+  renderCalendar(document.querySelector('#view'));
+}
+
 async function smartFill() {
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   const empties = data.schedules.filter(s => s.staffIds.length < (projectById[s.projectId]?.requiredCapacity ?? 1));
@@ -450,38 +501,14 @@ async function smartFill() {
     || (a.slotLabel === '自主安排' ? 1 : 0) - (b.slotLabel === '自主安排' ? 1 : 0)
     || SLOT_LABELS.indexOf(a.slotLabel) - SLOT_LABELS.indexOf(b.slotLabel));
   let filled = 0;
-  const warned = new Set();
-  const warnDaily = ctx.settings?.warnDailyCount ?? 0;
+  const warnedAll = new Set();
   for (const sch of empties) {
-    while (sch.staffIds.length < projectById[sch.projectId].requiredCapacity) {
-      const project = projectById[sch.projectId];
-      const candidates = data.staffs
-        .filter(s => !sch.staffIds.includes(s.id))
-        .map(s => ({ s, res: filterCandidate(s, sch, projectById, ctx) }))
-        .filter(x => x.res.ok);
-      if (candidates.length === 0) break;
-      let best = null;
-      for (const c of candidates) {
-        const { score } = scoreCandidate(c.s, sch, projectById, ctx);
-        if (!best || score > best.score) best = { s: c.s, score };
-      }
-      sch.staffIds.push(best.s.id);
-      const dailyKey = `${best.s.id}|${sch.date}`;
-      const slotKey = `${best.s.id}|${sch.date}|${sch.slotLabel}`;
-      const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
-      ctx.dailyCounts.set(dailyKey, dailyAfter);
-      ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
-      ctx.weeklyFatigue.set(best.s.id, (ctx.weeklyFatigue.get(best.s.id) ?? 0) + project.fatigueScore);
-      if (project.fatigueScore === 3) ctx.heavyCounts.set(best.s.id, (ctx.heavyCounts.get(best.s.id) ?? 0) + 1);
-      if (warnDaily > 0 && dailyAfter >= warnDaily) warned.add(best.s.id);
-      await saveSchedule(sch);
-      filled++;
-    }
+    const { filled: f, warned } = await fillSchedule(sch);
+    filled += f;
+    warned.forEach(id => warnedAll.add(id));
   }
-  const warnMsg = [...warned].map(id => data.staffs.find(s => s.id === id)?.name ?? id).join('、');
-  const msg = warnMsg
-    ? `智能排班完成：填充 ${filled} 个名额；${warnMsg} 当日已达预警阈值`
-    : `智能排班完成：填充 ${filled} 个名额`;
+  const warnMsg = [...warnedAll].map(id => data.staffs.find(s => s.id === id)?.name ?? id).join('、');
+  const msg = warnMsg ? `智能排班完成：填充 ${filled} 个名额；${warnMsg} 当日已达预警阈值` : `智能排班完成：填充 ${filled} 个名额`;
   showToast(msg, filled ? 'success' : 'info');
   renderCalendar(document.querySelector('#view'));
 }

@@ -280,70 +280,64 @@ body { display:flex; height:100vh; overflow:hidden; }
 .sidebar.collapsed .side-item { justify-content:center; padding:10px 0; }
 
 /* ===== 周历 ===== */
-.cal-grid { display:grid; grid-template-columns:70px repeat(7,1fr);
-  grid-template-rows:auto minmax(0,0.55fr) repeat(3,minmax(0,1fr)); gap:6px; font-size:13px;
-  flex:1; min-height:480px; }
-.cal-corner { font-weight:600; text-align:center; padding:4px; }
-.cal-date { background:#f7f1fa; color:#380c4a; border-radius:8px; padding:6px 4px; font-size:13px; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:12px;
+  flex:1; min-height:0; overflow-y:auto; font-size:13px; }
+.cal-col { display:flex; flex-direction:column; gap:8px; min-width:0;
+  background:#fcfafd; border:1px solid #eae5f0; border-radius:10px; padding:8px; }
+
+.cal-date { position:relative; background:#f7f1fa; color:#380c4a; border-radius:8px;
+  padding:7px 6px; text-align:center; font-weight:600; font-size:13px; }
 .cal-date b { display:block; font-size:11px; font-weight:500; color:#6a6178; margin-top:2px; }
 .cal-date.cal-today { background:#efe3f6; color:#5a1d78; }
 .cal-date.cal-today b { color:#5a1d78; font-weight:600; }
-.cal-slot { background:#f7f1fa; color:#5a1d78; border-left:3px solid #5a1d78; border-radius:8px;
-  padding:6px 4px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
-.cal-cell { min-height:0; border:1px solid #eae5f0; border-radius:8px; padding:6px; background:#fcfafd;
-  display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
-.cal-cell.empty { color:#9b91a7; text-align:center; cursor:pointer; display:flex; align-items:center;
-  justify-content:center; font-size:12px; border-style:dashed;
-  transition:background-color .15s,border-color .15s,color .15s; }
-.cal-cell.empty:hover { background:#f4f1f7; color:#5a1d78; border-color:#c9b0e0; }
-.drop-target { outline:2px solid #5a1d78; outline-offset:-2px; background:#f7f1fa !important; }
-.cal-add { align-self:center; border:1px dashed #d0c8d9; background:#fff; color:#9b91a7;
-  border-radius:999px; width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center;
-  cursor:pointer; opacity:.45; transition:opacity .12s, border-color .12s, color .12s; margin:2px 0; }
-.cal-add:hover { opacity:1; border-color:#5a1d78; color:#5a1d78; background:#f7f1fa; }
-.sch-card { border:1px solid #efe3f6; background:#f7f1fa; border-radius:8px; padding:6px; margin-bottom:6px;
-  transition:box-shadow .15s,transform .15s; }
-.sch-card:hover { box-shadow:0 2px 6px rgba(90,29,120,.12); transform:translateY(-1px); }
-.sch-title { font-weight:600; font-size:12px; }
-.staff-chip { display:inline-block; background:#fff; border:1px solid #e0d2ef; border-radius:999px;
-  padding:1px 8px; margin:2px; cursor:grab; font-size:12px;
-  transition:background-color .15s,border-color .15s; }
-.staff-chip:hover { background:#f7f1fa; border-color:#c9b0e0; }
+.cal-add-day { position:absolute; top:4px; right:4px; width:20px; height:20px; border:none;
+  border-radius:6px; background:#5a1d78; color:#fff; cursor:pointer; padding:0;
+  display:flex; align-items:center; justify-content:center; opacity:0;
+  transition:opacity .12s, background-color .12s; }
+.cal-add-day:hover { background:#48115f; }
+.cal-date:hover .cal-add-day { opacity:1; }
+.cal-today-flag { position:absolute; top:4px; left:4px; color:#5a1d78; }
+
+.cal-slot-card { position:relative; border-radius:10px; padding:6px;
+  display:flex; flex-direction:column; gap:4px; }
+.cal-slot-card.cal-slot-0 { background:#f1e8f6; --sb:#c9b0e0; }
+.cal-slot-card.cal-slot-1 { background:#f9e8ef; --sb:#e6bcd0; }
+.cal-slot-card.cal-slot-2 { background:#ece4f8; --sb:#c2b2e0; }
+.cal-slot-card.cal-slot-3 { background:#e6dcf0; --sb:#b8a6d4; }
+.cal-slot-chip { position:absolute; top:1px; right:4px; font-size:9px; font-weight:600;
+  color:#380c4a; background:rgba(255,255,255,.85); border-radius:999px; padding:0 6px; line-height:14px; }
+.drop-target { outline:2px solid #5a1d78; outline-offset:-2px; }
 
 /* ===== 周历工具栏分组 ===== */
 .cal-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:12px;
   flex-wrap:wrap; }
 .cal-bar-group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
-/* ===== 今天列高亮 ===== */
-.cal-cell.cal-col-today { background:#f7f1fa; border-color:#e0d2ef; }
-
-/* ===== 空单元格空态 ===== */
-.cal-cell.empty { border-style:dashed; border-color:#d0c8d9; background:#fcfafd; border-radius:8px;
-  flex:1; min-height:70px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:2px;
-  color:#9b91a7; font-size:12px;
-  transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s; }
-.cal-cell.empty .plus { font-size:16px; color:#c1c8d0; line-height:1; transition:color .15s; }
-.cal-cell.empty:hover { background:#f4f1f7; color:#5a1d78; border-color:#c9b0e0;
-  box-shadow:0 1px 3px rgba(90,29,120,.12); }
-.cal-cell.empty:hover .plus { color:#5a1d78; }
-
 /* ===== 班次卡片状态 ===== */
-.sch-card { border:1px solid #efe3f6; background:#f7f1fa; border-radius:8px; padding:6px; margin-bottom:6px;
+.cal-slot-card .sch-card { border:1px solid var(--sb, #c9b0e0); background:#fff;
+  border-radius:8px; padding:6px; margin-bottom:0;
   display:flex; flex-direction:column; gap:4px;
   transition:box-shadow .15s,transform .15s; }
-.sch-card:hover { box-shadow:0 2px 6px rgba(90,29,120,.12); transform:translateY(-1px); }
-.sch-card.short { border-color:#fed7aa; background:#fff7ed; }
-.sch-card.full { border-color:#bbf7d0; background:#f0fdf4; }
+.cal-slot-card .sch-card:hover { box-shadow:0 2px 6px rgba(90,29,120,.12); transform:translateY(-1px); }
+.cal-slot-card .sch-card.short { border-color:#fed7aa; background:#fff7ed; }
+.cal-slot-card .sch-card.full { border-color:#bbf7d0; background:#f0fdf4; }
 .sch-title { font-weight:600; font-size:12px; }
 .sch-meta { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#6a6178; }
 .sch-time { color:#9b91a7; font-size:10px; }
 .sch-badge { display:inline-flex; align-items:center; gap:1px; }
 .sch-staff { display:flex; flex-wrap:wrap; }
+.sch-cap-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
 .sch-capacity { font-size:11px; color:#d97706; font-weight:500; }
 .sch-capacity.ok { color:#16a34a; }
+.sch-smart { border:none; background:#5a1d78; color:#fff; border-radius:6px;
+  font-size:11px; padding:2px 8px; cursor:pointer; transition:background-color .12s; }
+.sch-smart:hover { background:#48115f; }
 
 /* ===== 人员 chip 疲劳状态 ===== */
+.staff-chip { display:inline-block; background:#fff; border:1px solid #e0d2ef; border-radius:999px;
+  padding:1px 8px; margin:2px; cursor:grab; font-size:12px;
+  transition:background-color .15s,border-color .15s; }
+.staff-chip:hover { background:#f7f1fa; border-color:#c9b0e0; }
 .staff-chip.warn { border-color:#fbbf24; background:#fffbeb; color:#b45309; }
 .staff-chip.over { border-color:#f87171; background:#fef2f2; color:#b91c1c; font-weight:500; }
 
