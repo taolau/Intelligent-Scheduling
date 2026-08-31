@@ -26,17 +26,18 @@ Intelligent-Scheduling/
 | | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
 | | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
 | | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
-| `views/` | `calendar.js` | 周历网格看板（核心交互） | core+data+ui |
+| `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出排班表/导出图片」） | core+data+ui |
 | | `config.js` | 基础配置页（人员/任务**卡片网格**，开关切换状态、编辑弹窗；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
 | | `icons.js` | 共享 SVG 图标常量（ICON_FIRE 劳累指数火焰等） | 无 |
 | | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | select |
-| | `select.js` | 自定义下拉：createSelect 单选/多选统一组件，el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
+| | `select.js` | 自定义下拉：createSelect 单选/多选统一组件（`searchable` 可搜索过滤），el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
 | | `timepicker.js` | 时间选择器：createTimePicker 点击整个框弹时/分双列面板（小时 00-23、分钟 00-59，选分钟自动收起），el.value 返回 'HH:mm' 或 '' | theme |
 | | `modal.js` | 弹窗（替补推荐等） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
+| | `exportImage.js` | 周历导出 PNG（html2canvas 离屏克隆：固定 1200px 宽/静态视图/标题区），文件名 Numbers-排班图-… | excel(下载) + week |
 | | `toast.js` | 提示 | theme |
 | `main.js` | — | 入口装配三视图+导航 | views/* |
 
