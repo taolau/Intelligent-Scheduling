@@ -101,6 +101,13 @@ const css = `
 .sel-value { flex:1; min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:4px;
   overflow:hidden; }
 .sel-value.placeholder { color:#9b91a7; }
+/* 可搜索下拉：顶部搜索框 + 选项列表容器 */
+.sel-search { box-sizing:border-box; width:calc(100% - 12px); margin:6px 6px 2px; padding:6px 8px;
+  border:1px solid #e0d2ef; border-radius:7px; font-size:12px; color:#241f2e; outline:none;
+  transition:border-color .12s, box-shadow .12s; }
+.sel-search::placeholder { color:#9b91a7; }
+.sel-search:focus { border-color:#5a1d78; box-shadow:0 0 0 3px rgba(90,29,120,.14); }
+.sel-list { max-height:264px; overflow-y:auto; padding:0 6px 6px; }
 .sel-chevron { flex-shrink:0; display:inline-flex; color:#6a6178; transition:transform .15s; }
 .sel-chevron svg { width:16px; height:16px; }
 .sel.open .sel-chevron { transform:rotate(180deg); }
@@ -312,6 +319,21 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:12px;
   flex-wrap:wrap; }
 .cal-bar-group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+/* ===== 视图维度切换（总览/项目/人员）+ 过滤视图 ===== */
+.seg.seg-sm button { padding:4px 12px; font-size:12px; border-radius:7px; }
+.cal-dim-select { width:auto; min-width:140px; }
+.cal-dim-select .sel-trigger { min-height:30px; padding:4px 10px; font-size:12px; }
+.cal-dim-summary { display:flex; align-items:center; gap:10px; font-size:12px; color:#6a6178; margin:0 0 10px; }
+.cal-dim-summary b { color:#5a1d78; font-weight:600; }
+.cal-dim-summary .s-ok { color:#16a34a; font-weight:500; }
+.cal-dim-summary .s-warn { color:#d97706; font-weight:500; }
+.cal-dim-summary .s-tag { background:#efe3f6; color:#5a1d78; border-radius:999px; padding:0 8px; line-height:18px; font-size:11px; }
+.cal-day-off { border:1px dashed #e0d2ef; border-radius:10px; padding:16px 6px;
+  text-align:center; font-size:12px; color:#9b91a7; }
+.cal-empty { flex:1; min-height:220px; display:flex; align-items:center; justify-content:center;
+  border:1px dashed #e0d2ef; border-radius:12px; background:#fcfafd; color:#9b91a7; font-size:13px; }
+.cal-grid.readonly .staff-chip { cursor:default; }
 
 /* ===== 班次卡片状态 ===== */
 .cal-slot-card .sch-card { border:1px solid var(--sb, #c9b0e0); background:#fff;

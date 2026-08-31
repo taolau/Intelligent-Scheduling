@@ -12,7 +12,7 @@ function normalize(options) {
   return options.map((o) => (typeof o === 'string' ? { value: o, label: o } : { value: String(o.value), label: o.label, desc: o.desc }));
 }
 
-export function createSelect({ options = [], value, multiple = false, placeholder = '请选择' }) {
+export function createSelect({ options = [], value, multiple = false, placeholder = '请选择', searchable = false }) {
   const opts = normalize(options);
   const el = document.createElement('div');
   el.className = 'sel';
@@ -29,7 +29,15 @@ export function createSelect({ options = [], value, multiple = false, placeholde
 
   const panel = document.createElement('div');
   panel.className = 'sel-panel';
+  // 面板内任何点击（搜索框、空态、间隙）都不冒泡到 document，避免误关闭
+  panel.addEventListener('click', (e) => e.stopPropagation());
   el.append(trigger, panel);
+
+  // searchable：面板顶部搜索框，输入即过滤；view = 过滤后的当前可见选项
+  let query = '';
+  let view = opts;
+  let searchInput = null;
+  let listEl = null;
 
   let sel = multiple ? new Set() : '';
   const initVal = toStr(value);
@@ -85,7 +93,7 @@ export function createSelect({ options = [], value, multiple = false, placeholde
 
   function syncPanel() {
     items.forEach((it, i) => {
-      const o = opts[i];
+      const o = view[i];
       if (!o) return;
       const isSel = multiple ? sel.has(o.value) : sel === o.value;
       it.classList.toggle('selected', isSel);
@@ -94,23 +102,36 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     if (countEl) countEl.textContent = `已选 ${sel.size} 项`;
   }
 
-  function renderPanel() {
-    panel.innerHTML = '';
+  function filteredView() {
+    if (!query) return opts;
+    return opts.filter((o) => o.label.toLowerCase().includes(query));
+  }
+
+  function renderOptions() {
+    view = filteredView();
     items.length = 0;
     countEl = null;
-    if (multiple) {
-      countEl = document.createElement('div');
-      countEl.className = 'sel-count';
-      panel.appendChild(countEl);
-    }
+    listEl.innerHTML = '';
     if (opts.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'sel-empty';
       empty.textContent = '无可用选项';
-      panel.appendChild(empty);
+      listEl.appendChild(empty);
       return;
     }
-    opts.forEach((o, i) => {
+    if (multiple) {
+      countEl = document.createElement('div');
+      countEl.className = 'sel-count';
+      listEl.appendChild(countEl);
+    }
+    if (view.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'sel-empty';
+      empty.textContent = '无匹配结果';
+      listEl.appendChild(empty);
+      return;
+    }
+    view.forEach((o) => {
       const opt = document.createElement('div');
       opt.className = 'sel-opt';
       const check = document.createElement('span');
@@ -127,16 +148,35 @@ export function createSelect({ options = [], value, multiple = false, placeholde
       }
       opt.onclick = (e) => {
         e.stopPropagation();
-        choose(i);
+        choose(o);
       };
-      panel.appendChild(opt);
+      listEl.appendChild(opt);
       items.push(opt);
     });
     syncPanel();
   }
 
-  function choose(i) {
-    const o = opts[i];
+  function renderPanel() {
+    panel.innerHTML = '';
+    if (searchable) {
+      searchInput = document.createElement('input');
+      searchInput.className = 'sel-search';
+      searchInput.type = 'text';
+      searchInput.placeholder = '搜索…';
+      searchInput.addEventListener('input', () => {
+        query = searchInput.value.trim().toLowerCase();
+        renderOptions();
+      });
+      searchInput.addEventListener('keydown', onKey);
+      panel.appendChild(searchInput);
+    }
+    listEl = document.createElement('div');
+    listEl.className = 'sel-list';
+    panel.appendChild(listEl);
+    renderOptions();
+  }
+
+  function choose(o) {
     if (!o) return;
     if (multiple) {
       if (sel.has(o.value)) sel.delete(o.value);
@@ -153,9 +193,9 @@ export function createSelect({ options = [], value, multiple = false, placeholde
   }
 
   function move(delta) {
-    if (opts.length === 0) return;
-    if (activeIndex === -1) activeIndex = delta > 0 ? 0 : opts.length - 1;
-    else activeIndex = Math.min(opts.length - 1, Math.max(0, activeIndex + delta));
+    if (view.length === 0) return;
+    if (activeIndex === -1) activeIndex = delta > 0 ? 0 : view.length - 1;
+    else activeIndex = Math.min(view.length - 1, Math.max(0, activeIndex + delta));
     syncPanel();
     const it = items[activeIndex];
     if (it) it.scrollIntoView({ block: 'nearest' });
@@ -187,9 +227,11 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     closeOpen();
     openEl = el;
     el.classList.add('open');
-    activeIndex = multiple ? -1 : opts.findIndex((o) => o.value === sel);
+    query = '';
     renderPanel();
-    if (activeIndex < 0) activeIndex = multiple ? -1 : 0;
+    if (searchable && searchInput) searchInput.focus({ preventScroll: true });
+    activeIndex = multiple ? -1 : view.findIndex((o) => o.value === sel);
+    if (activeIndex < 0) activeIndex = multiple ? -1 : (view.length ? 0 : -1);
     syncPanel();
     positionPanel();
     document.addEventListener('scroll', onScroll, true);

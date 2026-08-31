@@ -9,6 +9,7 @@ import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
 import { exportAttendance } from '../ui/excel.js';
+import { exportWeekImage } from '../ui/exportImage.js';
 import { createSelect } from '../ui/select.js';
 import { ICON_FIRE } from '../ui/icons.js';
 
@@ -16,16 +17,37 @@ let currentWeekStart = getWeekStart(todayStr());
 let data = { projects: [], staffs: [], schedules: [], leaves: [] };
 let ctx = null;
 
+// ===== 视图维度（总览/项目/人员），localStorage 持久记忆 =====
+const VIEW_KEY = 'is_sched:cal_view';
+let viewMode = 'overview'; // 'overview' | 'project' | 'staff'
+let viewTargetId = '';
+
+try {
+  const saved = JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null');
+  if (saved && ['overview', 'project', 'staff'].includes(saved.mode)) {
+    viewMode = saved.mode;
+    viewTargetId = saved.id ?? '';
+  }
+} catch { /* 持久化状态损坏则忽略，回退总览 */ }
+
+function persistViewState() {
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify({ mode: viewMode, id: viewTargetId })); } catch { /* 存储不可用时静默 */ }
+}
+
 const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M15 18l-6-6 6-6"/></svg>';
 const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M9 18l6-6-6-6"/></svg>';
 const ICON_ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>';
 const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>';
 const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
 
 export async function renderCalendar(container) {
   data = getCache();
+  // 过滤视图目标已被删除时回退总览（状态是渲染参数而非 DOM 反读，操作后重渲染不丢失维度）
+  if (viewMode === 'project' && !data.projects.some(p => p.id === viewTargetId)) { viewMode = 'overview'; viewTargetId = ''; persistViewState(); }
+  if (viewMode === 'staff' && !data.staffs.some(s => s.id === viewTargetId)) { viewMode = 'overview'; viewTargetId = ''; persistViewState(); }
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById, getSettings());
 
@@ -36,14 +58,56 @@ export async function renderCalendar(container) {
   left.className = 'cal-bar-group';
   const right = document.createElement('div');
   right.className = 'cal-bar-group';
+
+  // 维度切换：总览 / 项目 / 人员
+  const seg = document.createElement('div');
+  seg.className = 'seg seg-sm';
+  for (const [mode, label] of [['overview', '总览'], ['project', '项目'], ['staff', '人员']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    if (viewMode === mode) b.classList.add('active');
+    b.onclick = () => {
+      if (viewMode === mode) return;
+      viewMode = mode;
+      // 切维度时沿用已选目标（仍存在时），否则自动选第一个，避免空选
+      if (viewMode === 'project') viewTargetId = data.projects.some(p => p.id === viewTargetId) ? viewTargetId : (data.projects[0]?.id ?? '');
+      if (viewMode === 'staff') viewTargetId = data.staffs.some(s => s.id === viewTargetId) ? viewTargetId : (data.staffs[0]?.id ?? '');
+      persistViewState();
+      renderCalendar(container);
+    };
+    seg.appendChild(b);
+  }
+  left.appendChild(seg);
+
+  if (viewMode === 'project') {
+    const sel = createSelect({
+      options: data.projects.map(p => ({ value: p.id, label: p.name })),
+      value: viewTargetId, placeholder: '请选择任务', searchable: true,
+    });
+    sel.classList.add('cal-dim-select');
+    sel.addEventListener('change', () => { viewTargetId = sel.value; persistViewState(); renderCalendar(container); });
+    left.appendChild(sel);
+  } else if (viewMode === 'staff') {
+    const sel = createSelect({
+      options: data.staffs.map(s => ({ value: s.id, label: s.name })),
+      value: viewTargetId, placeholder: '请选择人员', searchable: true,
+    });
+    sel.classList.add('cal-dim-select');
+    sel.addEventListener('change', () => { viewTargetId = sel.value; persistViewState(); renderCalendar(container); });
+    left.appendChild(sel);
+  }
+
   const prev = btn('上周', false, false, ICON_PREV), next = btn('下周', false, false, ICON_NEXT, true);
   const label = document.createElement('span');
   label.className = 'week-label';
   label.textContent = getWeekLabel(currentWeekStart);
   const todayBtn = btn('今天');
-  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK), exportBtn = btn('导出排班表', false, false, ICON_EXPORT);
+  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK), exportBtn = btn('导出排班表', false, false, ICON_EXPORT), imgBtn = btn('导出图片', false, false, ICON_IMAGE);
   left.append(prev, label, next, todayBtn);
-  right.append(autoBtn, bulkBtn, exportBtn);
+  // 人员维度为只读视图：隐藏智能排班/批量铺排（导出仍可用，截图跟随当前视图）
+  if (viewMode === 'staff') right.append(exportBtn, imgBtn);
+  else right.append(autoBtn, bulkBtn, exportBtn, imgBtn);
   bar.append(left, right);
   container.appendChild(bar);
 
@@ -53,6 +117,25 @@ export async function renderCalendar(container) {
   autoBtn.onclick = () => smartFill();
   bulkBtn.onclick = () => bulkPlanDialog();
   exportBtn.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, currentWeekStart);
+  imgBtn.onclick = async () => {
+    if (!grid.isConnected) {
+      showToast('当前视图暂无班次，无可导出的排班图', 'error');
+      return;
+    }
+    const viewLabel = viewMode === 'overview' ? '总览'
+      : viewMode === 'project' ? `任务：${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
+      : `人员：${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
+    imgBtn.disabled = true;
+    showToast('正在生成图片…');
+    try {
+      await exportWeekImage(grid, `Numbers-排班图-${currentWeekStart}.png`, getWeekLabel(currentWeekStart), viewLabel);
+      showToast('排班图已导出', 'success');
+    } catch (e) {
+      showToast(`导出失败：${e.message}`, 'error');
+    } finally {
+      imgBtn.disabled = false;
+    }
+  };
 
   const grid = document.createElement('div');
   grid.className = 'cal-grid';
@@ -60,13 +143,38 @@ export async function renderCalendar(container) {
   const dates = getWeekDates(currentWeekStart);
   const today = todayStr();
 
+  // 维度过滤：项目=该任务全部班次；人员=该人已排入的班次（只读）
+  const dateSet = new Set(dates);
+  let visible = data.schedules.filter(s => dateSet.has(s.date));
+  let readOnly = false;
+  if (viewMode === 'project') visible = visible.filter(s => s.projectId === viewTargetId);
+  if (viewMode === 'staff') { visible = visible.filter(s => s.staffIds.includes(viewTargetId)); readOnly = true; }
+
+  // 过滤后整周为空 → 空态卡片（工具栏保留，可切回）
+  if (viewMode !== 'overview' && visible.length === 0) {
+    const name = viewMode === 'project'
+      ? data.projects.find(p => p.id === viewTargetId)?.name
+      : data.staffs.find(s => s.id === viewTargetId)?.name;
+    const empty = document.createElement('div');
+    empty.className = 'cal-empty';
+    empty.textContent = viewMode === 'project'
+      ? `本周暂无「${name}」的班次，可切换周或用「批量铺排」生成`
+      : `本周「${name}」暂无排班`;
+    container.appendChild(empty);
+    return;
+  }
+
+  // 维度摘要行（按当前浏览周现算，不依赖 ctx——ctx 周积分锚定首个班次所在周）
+  if (viewMode !== 'overview') container.appendChild(buildDimSummary(visible));
+
   // 按「日期|时段」预分组，避免逐格 O(n²) 过滤
   const byKey = new Map();
-  for (const s of data.schedules) {
+  for (const s of visible) {
     const key = `${s.date}|${s.slotLabel}`;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(s);
   }
+  if (readOnly) grid.classList.add('readonly');
 
   dates.forEach((d, i) => {
     const col = document.createElement('div');
@@ -79,34 +187,85 @@ export async function renderCalendar(container) {
       head.title = '今天';
       head.insertAdjacentHTML('beforeend', ICON_TODAY_FLAG);
     }
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'cal-add-day';
-    addBtn.title = '为此日创建班次';
-    addBtn.innerHTML = ICON_ADD;
-    addBtn.onclick = () => manualCreate(d);
-    head.appendChild(addBtn);
+    if (viewMode !== 'staff') { // 人员维度只读，不提供建班次入口
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'cal-add-day';
+      addBtn.title = '为此日创建班次';
+      addBtn.innerHTML = ICON_ADD;
+      addBtn.onclick = () => manualCreate(d, null, viewMode === 'project' ? viewTargetId : null);
+      head.appendChild(addBtn);
+    }
     col.appendChild(head);
 
+    let dayHasCard = false;
     SLOT_LABELS.forEach((slotLabel, si) => {
       const scheds = byKey.get(`${d}|${slotLabel}`);
       if (!scheds || scheds.length === 0) return;
+      dayHasCard = true;
       const slotCard = document.createElement('div');
       slotCard.className = `cal-slot-card cal-slot-${si}`;
-      slotCard.dataset.date = d;
-      slotCard.dataset.slot = slotLabel;
       const chip = document.createElement('span');
       chip.className = 'cal-slot-chip';
       chip.textContent = slotLabel;
       slotCard.appendChild(chip);
-      for (const sch of scheds) slotCard.appendChild(renderScheduleCard(sch));
-      enableDrop(slotCard, { onDrop: (e) => dropStaff(e, slotCard) });
+      for (const sch of scheds) slotCard.appendChild(renderScheduleCard(sch, readOnly));
       col.appendChild(slotCard);
     });
+
+    // 人员维度：当天无班次 → 「未排班」占位，一眼看出空档
+    if (readOnly && !dayHasCard) {
+      const off = document.createElement('div');
+      off.className = 'cal-day-off';
+      off.textContent = '未排班';
+      col.appendChild(off);
+    }
 
     grid.appendChild(col);
   });
   container.appendChild(grid);
+}
+
+function buildDimSummary(visible) {
+  const line = document.createElement('div');
+  line.className = 'cal-dim-summary';
+  if (viewMode === 'project') {
+    const p = data.projects.find(x => x.id === viewTargetId);
+    const cap = visible.reduce((n, s) => n + (p?.requiredCapacity ?? 1), 0);
+    const filled = visible.reduce((n, s) => n + s.staffIds.length, 0);
+    const lack = Math.max(0, cap - filled);
+    const name = document.createElement('b');
+    name.textContent = p?.name ?? viewTargetId;
+    const info = document.createElement('span');
+    info.textContent = `本周 ${visible.length} 个班次 · 已排 ${filled}/${cap} 人`;
+    line.append(name, info);
+    const tail = document.createElement('span');
+    if (cap > 0 && lack === 0) { tail.className = 's-ok'; tail.textContent = '✓ 已满员'; }
+    else if (lack > 0) { tail.className = 's-warn'; tail.textContent = `缺 ${lack} 人`; }
+    if (tail.textContent) line.appendChild(tail);
+  } else if (viewMode === 'staff') {
+    const st = data.staffs.find(x => x.id === viewTargetId);
+    let fatigue = 0, heavy = 0;
+    for (const s of visible) {
+      const f = data.projects.find(p => p.id === s.projectId)?.fatigueScore ?? 0;
+      fatigue += f;
+      if (f === 3) heavy++;
+    }
+    const name = document.createElement('b');
+    name.textContent = st?.name ?? viewTargetId;
+    line.appendChild(name);
+    const STATUS_TXT = { new: '新入', rest: '休假中', left: '已退出' };
+    if (st && STATUS_TXT[st.status]) {
+      const tag = document.createElement('span');
+      tag.className = 's-tag';
+      tag.textContent = STATUS_TXT[st.status];
+      line.appendChild(tag);
+    }
+    const info = document.createElement('span');
+    info.textContent = `本周 ${visible.length} 个班次 · 疲劳 ${fatigue}/${st?.maxWeeklyFatigue ?? 0} · 高强度 ${heavy}/${st?.maxHeavyTaskCount ?? 0}`;
+    line.appendChild(info);
+  }
+  return line;
 }
 
 function btn(text, active = false, plain = false, icon = '', iconAfter = false) {
@@ -117,7 +276,7 @@ function btn(text, active = false, plain = false, icon = '', iconAfter = false) 
   return b;
 }
 
-function renderScheduleCard(sch) {
+function renderScheduleCard(sch, readOnly = false) {
   const card = document.createElement('div');
   card.className = 'sch-card';
   const project = data.projects.find(p => p.id === sch.projectId);
@@ -125,8 +284,12 @@ function renderScheduleCard(sch) {
   const filled = sch.staffIds.length;
   if (filled >= capacity) card.classList.add('full');
   else if (filled > 0) card.classList.add('short');
-  card.title = '点击手动分配人员';
-  card.onclick = () => scheduleDialog(sch);
+  if (!readOnly) {
+    card.title = '点击手动分配人员';
+    card.onclick = () => scheduleDialog(sch);
+    // 落点精确到卡片：拖到哪张任务卡片，人就进哪个班次（同格多班次不再取第一个）
+    enableDrop(card, { onDrop: (e) => dropStaff(e, sch.id) });
+  }
 
   const title = document.createElement('div');
   title.textContent = `${project?.name ?? sch.projectId}`;
@@ -158,7 +321,9 @@ function renderScheduleCard(sch) {
     chip.textContent = staff?.name ?? sid;
     chip.className = staffChipClass(staff, sch.date);
     chip.title = staffChipTitle(staff, sch.date);
-    enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
+    if (!readOnly) { // 只读视图：不可拖拽，仍可点击标记请假
+      enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
+    }
     chip.onclick = (e) => { e.stopPropagation(); staffDialog(staff, sch); };
     names.appendChild(chip);
   }
@@ -380,19 +545,18 @@ function staffChipTitle(staff, date) {
   return `本周疲劳 ${fatigue}/${staff.maxWeeklyFatigue}，高强度 ${heavy}/${staff.maxHeavyTaskCount}，当日 ${daily} 个任务`;
 }
 
-async function dropStaff(e, cell) {
+async function dropStaff(e, targetId) {
   const { staffId, scheduleId } = JSON.parse(e.dataTransfer.getData('text/plain'));
-  const targetDate = cell.dataset.date;
-  const targetSlot = cell.dataset.slot;
-  const targetProject = data.projects.find(p => p.id === data.schedules.find(s => s.date === targetDate && s.slotLabel === targetSlot)?.projectId);
-  if (!targetProject) { showToast('目标格无班次', 'error'); return; }
+  const to = data.schedules.find(s => s.id === targetId);
+  if (!to) { showToast('目标班次不存在', 'error'); return; }
+  if (scheduleId === to.id) return; // 原地拖放，无操作
   const staff = data.staffs.find(s => s.id === staffId);
-  const pseudoSchedule = { date: targetDate, projectId: targetProject.id, slotLabel: targetSlot };
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+  const toProject = data.projects.find(p => p.id === to.projectId);
+  const pseudoSchedule = { date: to.date, projectId: to.projectId, slotLabel: to.slotLabel };
+  if (to.staffIds.includes(staffId)) { showToast(`${staff?.name ?? staffId} 已在该班次中`, 'info'); return; }
 
   const from = data.schedules.find(s => s.id === scheduleId);
-  const to = data.schedules.find(s => s.date === targetDate && s.slotLabel === targetSlot);
-  if (!to) { showToast('目标格无班次，请先手动建班次', 'error'); return; }
 
   // 拖拽是"移动"而非"新增"：校验基于"移走源班次后"的计数快照，避免误报超限
   const ctxAfterMove = {
@@ -414,8 +578,7 @@ async function dropStaff(e, cell) {
   const res = filterCandidate(staff, pseudoSchedule, projectById, ctxAfterMove);
   if (!res.ok) { showToast(res.reasons.join('；'), 'error'); return; }
 
-  const toProject = data.projects.find(p => p.id === to.projectId);
-  if (!to.staffIds.includes(staffId) && to.staffIds.length >= (toProject?.requiredCapacity ?? 1)) {
+  if (to.staffIds.length >= (toProject?.requiredCapacity ?? 1)) {
     showToast('目标班次已满员', 'error'); return;
   }
 
@@ -496,7 +659,8 @@ async function smartFillOne(sch) {
 
 async function smartFill() {
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  const empties = data.schedules.filter(s => s.staffIds.length < (projectById[s.projectId]?.requiredCapacity ?? 1));
+  let empties = data.schedules.filter(s => s.staffIds.length < (projectById[s.projectId]?.requiredCapacity ?? 1));
+  if (viewMode === 'project') empties = empties.filter(s => s.projectId === viewTargetId); // 项目维度下只填当前任务
   empties.sort((a, b) => a.date.localeCompare(b.date)
     || (a.slotLabel === '自主安排' ? 1 : 0) - (b.slotLabel === '自主安排' ? 1 : 0)
     || SLOT_LABELS.indexOf(a.slotLabel) - SLOT_LABELS.indexOf(b.slotLabel));
@@ -507,8 +671,10 @@ async function smartFill() {
     filled += f;
     warned.forEach(id => warnedAll.add(id));
   }
+  const scopeName = viewMode === 'project' ? (data.projects.find(p => p.id === viewTargetId)?.name ?? '') : '';
+  const scopeTxt = scopeName ? `已为「${scopeName}」填充` : '智能排班完成：填充';
   const warnMsg = [...warnedAll].map(id => data.staffs.find(s => s.id === id)?.name ?? id).join('、');
-  const msg = warnMsg ? `智能排班完成：填充 ${filled} 个名额；${warnMsg} 当日已达预警阈值` : `智能排班完成：填充 ${filled} 个名额`;
+  const msg = warnMsg ? `${scopeTxt} ${filled} 个名额；${warnMsg} 当日已达预警阈值` : `${scopeTxt} ${filled} 个名额`;
   showToast(msg, filled ? 'success' : 'info');
   renderCalendar(document.querySelector('#view'));
 }
@@ -573,7 +739,7 @@ function openSubstituteModal(sch, recom) {
   openModal({ title: '替补推荐', body });
 }
 
-function manualCreate(date, slotLabel) {
+function manualCreate(date, slotLabel, presetProjectId) {
   const body = document.createElement('div');
 
   const dateRow = document.createElement('div');
@@ -598,7 +764,7 @@ function manualCreate(date, slotLabel) {
   projRow.appendChild(document.createTextNode('任务'));
   const projSel = createSelect({
     options: data.projects.map((p) => ({ value: p.id, label: p.name })),
-    value: data.projects[0]?.id ?? '',
+    value: presetProjectId || data.projects[0]?.id || '',
     placeholder: '请选择任务',
   });
   projSel.dataset.k = 'project';
@@ -651,7 +817,9 @@ function bulkPlanDialog() {
   const modal = openModal({ title: '批量铺排未来 N 周', body, footer });
   ok.onclick = async () => {
     const n = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), 4);
-    const expected = expandWeeks(data.projects, currentWeekStart, n, createSchedule);
+    // 项目维度下只铺排当前任务
+    const scopeProjects = viewMode === 'project' ? data.projects.filter(p => p.id === viewTargetId) : data.projects;
+    const expected = expandWeeks(scopeProjects, currentWeekStart, n, createSchedule);
     const existing = new Set(data.schedules.map(s => `${s.date}|${s.projectId}|${s.slotLabel}`));
     let created = 0;
     for (const sch of expected) {
