@@ -2,14 +2,13 @@
 // 改用 localStorage：file:// 下可读写且持久，实现"双击即用"。
 // 本层维护内存 Map（id→record）作索引：读写走 O(1) Map 操作，首次访问某 store 时从 localStorage 加载一次，
 // 每次变更同步序列化整表写回 localStorage。视图层高频读（getAll）不再反复 JSON.parse。
-const PREFIX = 'is_sched:';
-const STORES = ['projects', 'staffs', 'schedules'];
+import { KEYS, STORES } from './keys.js';
 
 const maps = new Map();
 
 function readStore(storeName) {
   try {
-    const raw = localStorage.getItem(PREFIX + storeName);
+    const raw = localStorage.getItem(KEYS[storeName]);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -17,7 +16,7 @@ function readStore(storeName) {
 }
 
 function writeStore(storeName, records) {
-  localStorage.setItem(PREFIX + storeName, JSON.stringify(records));
+  localStorage.setItem(KEYS[storeName], JSON.stringify(records));
 }
 
 function storeMap(storeName) {
@@ -55,6 +54,6 @@ export async function writeAll(storeName, records) {
 export async function clearAll() {
   for (const name of STORES) {
     maps.delete(name);
-    localStorage.removeItem(PREFIX + name);
+    localStorage.removeItem(KEYS[name]);
   }
 }

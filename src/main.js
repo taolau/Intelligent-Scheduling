@@ -5,6 +5,7 @@ import { renderCalendar } from './views/calendar.js';
 import { renderConfig } from './views/config.js';
 import { renderAnalysis } from './views/analysis.js';
 import { loadAll, exportJSON, importJSON } from './data/store.js';
+import { KEYS } from './data/keys.js';
 import { openModal } from './ui/modal.js';
 import { showToast } from './ui/toast.js';
 
@@ -25,7 +26,6 @@ const views = {
   analysis: { label: '疲劳分析', icon: ICON.chart, render: renderAnalysis },
 };
 
-const TOGGLE_KEY = 'sidebar-collapsed';
 let current = null;
 
 function buildNav() {
@@ -67,10 +67,10 @@ async function switchView(key) {
 
 function initSidebar() {
   const sidebar = document.querySelector('#sidebar');
-  sidebar.classList.toggle('collapsed', localStorage.getItem(TOGGLE_KEY) === '1');
+  sidebar.classList.toggle('collapsed', localStorage.getItem(KEYS.sidebar) === '1');
   document.querySelector('.side-toggle').onclick = () => {
     const now = sidebar.classList.toggle('collapsed');
-    localStorage.setItem(TOGGLE_KEY, now ? '1' : '0');
+    localStorage.setItem(KEYS.sidebar, now ? '1' : '0');
   };
 }
 

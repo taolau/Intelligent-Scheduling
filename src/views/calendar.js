@@ -4,6 +4,7 @@ import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
 import { getCache, saveSchedule, getSettings, removeSchedule } from '../data/store.js';
+import { KEYS } from '../data/keys.js';
 import { createSchedule, SLOT_LABELS } from '../data/model.js';
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
@@ -18,12 +19,11 @@ let data = { projects: [], staffs: [], schedules: [] };
 let ctx = null;
 
 // ===== 视图维度（总览/项目/人员），localStorage 持久记忆 =====
-const VIEW_KEY = 'is_sched:cal_view';
 let viewMode = 'overview'; // 'overview' | 'project' | 'staff'
 let viewTargetId = '';
 
 try {
-  const saved = JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null');
+  const saved = JSON.parse(localStorage.getItem(KEYS.calView) ?? 'null');
   if (saved && ['overview', 'project', 'staff'].includes(saved.mode)) {
     viewMode = saved.mode;
     viewTargetId = saved.id ?? '';
@@ -31,7 +31,7 @@ try {
 } catch { /* 持久化状态损坏则忽略，回退总览 */ }
 
 function persistViewState() {
-  try { localStorage.setItem(VIEW_KEY, JSON.stringify({ mode: viewMode, id: viewTargetId })); } catch { /* 存储不可用时静默 */ }
+  try { localStorage.setItem(KEYS.calView, JSON.stringify({ mode: viewMode, id: viewTargetId })); } catch { /* 存储不可用时静默 */ }
 }
 
 const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M15 18l-6-6 6-6"/></svg>';

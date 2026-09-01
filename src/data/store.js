@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import { KEYS } from './keys.js';
 import { DEFAULT_SETTINGS } from './model.js';
 
 const cache = { projects: [], staffs: [], schedules: [] };
@@ -56,7 +57,7 @@ export async function importJSON(text) {
 
 export function getSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem('is_sched:settings') || '{}');
+    const saved = JSON.parse(localStorage.getItem(KEYS.settings) || '{}');
     return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -64,5 +65,5 @@ export function getSettings() {
 }
 
 export function saveSettings(settings) {
-  localStorage.setItem('is_sched:settings', JSON.stringify({ ...DEFAULT_SETTINGS, ...settings }));
+  localStorage.setItem(KEYS.settings, JSON.stringify({ ...DEFAULT_SETTINGS, ...settings }));
 }
