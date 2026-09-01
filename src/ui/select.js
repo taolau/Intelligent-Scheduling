@@ -112,6 +112,8 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     items.length = 0;
     countEl = null;
     listEl.innerHTML = '';
+    // 过滤后列表变短，键盘高亮索引随之夹取，避免越界取到 undefined
+    if (activeIndex >= view.length) activeIndex = view.length ? 0 : -1;
     if (opts.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'sel-empty';
@@ -134,6 +136,7 @@ export function createSelect({ options = [], value, multiple = false, placeholde
     view.forEach((o) => {
       const opt = document.createElement('div');
       opt.className = 'sel-opt';
+      opt.title = o.label;
       const check = document.createElement('span');
       check.className = 'sel-check';
       const lab = document.createElement('span');
@@ -150,6 +153,8 @@ export function createSelect({ options = [], value, multiple = false, placeholde
         e.stopPropagation();
         choose(o);
       };
+      // 按下即阻止默认：防搜索框失焦（IME 组合被打断会补发 input 重建选项 DOM，click 落空变纯关闭）
+      opt.addEventListener('mousedown', (e) => e.preventDefault());
       listEl.appendChild(opt);
       items.push(opt);
     });
@@ -270,7 +275,7 @@ export function createSelect({ options = [], value, multiple = false, placeholde
       move(-1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (activeIndex >= 0) choose(activeIndex);
+      if (activeIndex >= 0) choose(view[activeIndex]);
     }
   }
 

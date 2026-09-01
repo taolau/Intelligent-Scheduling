@@ -4,6 +4,7 @@ import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
 import { createTimePicker } from '../ui/timepicker.js';
 import { getCache, saveProject, saveStaff, getSettings, saveSettings } from '../data/store.js';
+import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
 import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
@@ -17,11 +18,9 @@ const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
 
-const CONFIG_TAB_KEY = 'is_sched:config_tab';
-
 export function renderConfig(container) {
   const keepTab = document.querySelector('.seg button.active')?.textContent
-    ?? (localStorage.getItem(CONFIG_TAB_KEY) === 'project' ? '任务管理' : '人员管理');
+    ?? (localStorage.getItem(KEYS.configTab) === 'project' ? '任务管理' : '人员管理');
   container.innerHTML = '';
   const bar = document.createElement('div');
   bar.className = 'seg';
@@ -45,8 +44,8 @@ export function renderConfig(container) {
   container.appendChild(body);
   if (keepTab === '任务管理') { tabProject.classList.add('active'); renderProjects(body); }
   else { tabStaff.classList.add('active'); renderStaffs(body); }
-  tabStaff.onclick = () => { setTab(tabStaff, tabProject); localStorage.setItem(CONFIG_TAB_KEY, 'staff'); renderStaffs(body); };
-  tabProject.onclick = () => { setTab(tabProject, tabStaff); localStorage.setItem(CONFIG_TAB_KEY, 'project'); renderProjects(body); };
+  tabStaff.onclick = () => { setTab(tabStaff, tabProject); localStorage.setItem(KEYS.configTab, 'staff'); renderStaffs(body); };
+  tabProject.onclick = () => { setTab(tabProject, tabStaff); localStorage.setItem(KEYS.configTab, 'project'); renderProjects(body); };
 }
 
 function btn(text, active = false, icon = '') {
@@ -60,6 +59,62 @@ function btn(text, active = false, icon = '') {
 function setTab(on, off) {
   on.classList.add('active');
   off.classList.remove('active');
+}
+
+// 值区 tag 超过 2 行时折叠：第 3 行起隐藏，追加「+N」chip；点击展开/收起
+function foldTags(vEl) {
+  const old = vEl.querySelector('.tag-more');
+  if (old) old.remove();
+  const tags = [...vEl.children].filter(el => el.classList.contains('tag'));
+  if (!tags.length) return;
+  tags.forEach(t => { t.style.display = ''; });
+  const open = vEl.dataset.fold === 'open';
+  if (open) return appendMore(vEl, tags, [], '收起', true);
+  const tops = tags.map(t => t.offsetTop);
+  const rows = [...new Set(tops)].sort((a, b) => a - b);
+  if (rows.length <= 2) return;
+  const visible = tops.slice().map(y => Math.abs(y - rows[0]) < 4 || Math.abs(y - rows[1]) < 4);
+  const hiddenIdx = [];
+  tags.forEach((t, i) => { if (!visible[i]) { t.style.display = 'none'; hiddenIdx.push(i); } });
+  // 「+N」chip 自身被挤到第 3 行时，继续收起第 2 行末尾的 tag
+  const chip = appendMore(vEl, tags, hiddenIdx, `+${hiddenIdx.length}`);
+  let guard = tags.length;
+  while (chip.offsetTop >= rows[2] - 2 && guard--) {
+    const last = hiddenIdx.length ? hiddenIdx[hiddenIdx.length - 1] : tags.length;
+    let i = last - 1;
+    while (i >= 0 && tags[i].style.display === 'none') i--;
+    if (i < 0) break;
+    tags[i].style.display = 'none';
+    hiddenIdx.push(i);
+    chip.textContent = `+${hiddenIdx.length}`;
+  }
+}
+
+function appendMore(vEl, tags, hiddenIdx, text, isOpen = false) {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'tag tag-more';
+  chip.textContent = text;
+  chip.title = isOpen ? '点击收起' : '点击展开';
+  chip.onclick = () => {
+    vEl.dataset.fold = isOpen ? 'folded' : 'open';
+    foldTags(vEl);
+  };
+  vEl.appendChild(chip);
+  return chip;
+}
+
+let gridRO = null;
+// 列宽变化（窗口缩放/列数增减）后重新折叠；高度变化跳过，避免 RO 反复触发
+function observeGridFold(grid) {
+  gridRO?.disconnect();
+  let lastW = 0;
+  gridRO = new ResizeObserver(() => {
+    if (Math.abs(grid.clientWidth - lastW) < 1) return;
+    lastW = grid.clientWidth;
+    grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
+  });
+  gridRO.observe(grid);
 }
 
 function statusBadge(status) {
@@ -106,11 +161,11 @@ async function renderStaffs(body) {
     return (b.joinedAt ?? 0) - (a.joinedAt ?? 0);
   });
   for (const s of sorted) {
-    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join('') || '-';
-    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join('') || '-';
+    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join('') || '<span class="empty">—</span>';
+    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join('') || '<span class="empty">—</span>';
     const allowed = s.allowedProjects.length
       ? s.allowedProjects.map(id => `<span class="tag">${esc(projName.get(id) ?? id)}</span>`).join('')
-      : '-';
+      : '<span class="empty">—</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
     card.innerHTML = `
@@ -151,6 +206,8 @@ async function renderStaffs(body) {
     grid.appendChild(card);
   }
   body.appendChild(grid);
+  grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
+  observeGridFold(grid);
 }
 
 async function editStaffDialog(staff) {
@@ -281,7 +338,10 @@ async function renderProjects(body) {
   }
   for (const p of projects) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
-    const slots = p.slots.map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '-';
+    const slots = p.slots.map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">—</span>';
+    const timeRange = p.timeRange
+      ? `${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`
+      : '<span class="empty">—</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
     card.innerHTML = `
@@ -294,7 +354,7 @@ async function renderProjects(body) {
         <div class="cfg-row"><span class="k">所需人数</span><span class="v">${p.requiredCapacity} 人</span></div>
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
-        ${p.timeRange ? `<div class="cfg-row"><span class="k">时间段</span><span class="v">${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}</span></div>` : ''}
+        <div class="cfg-row"><span class="k">时间段</span><span class="v">${timeRange}</span></div>
       </div>
       <div class="cfg-card-ops">
         <label class="switch-wrap">
@@ -319,6 +379,8 @@ async function renderProjects(body) {
     grid.appendChild(card);
   }
   body.appendChild(grid);
+  grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
+  observeGridFold(grid);
 }
 
 async function editProjectDialog(project) {
