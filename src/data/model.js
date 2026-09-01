@@ -42,15 +42,6 @@ export function createSchedule(fields = {}) {
   };
 }
 
-export function createLeave(fields = {}) {
-  return {
-    id: fields.id ?? crypto.randomUUID(),
-    staffId: fields.staffId ?? '',
-    date: fields.date ?? '',
-    reason: fields.reason ?? '',
-  };
-}
-
 function problems(checks) {
   return checks.filter(c => c.cond).map(c => ({ field: c.field, msg: c.msg }));
 }

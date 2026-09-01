@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProject, createStaff, createSchedule, createLeave,
+import { createProject, createStaff, createSchedule,
          validateProject, validateStaff, SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
@@ -114,9 +114,4 @@ test('DEFAULT_SETTINGS 数量上限默认值', () => {
 test('createSchedule 默认空人员', () => {
   const sch = createSchedule({ date: '2026-08-24', projectId: 'P1', slotLabel: '上午' });
   assert.deepEqual(sch.staffIds, []);
-});
-
-test('createLeave 默认空原因', () => {
-  const l = createLeave({ staffId: 'S1', date: '2026-08-24' });
-  assert.equal(l.reason, '');
 });

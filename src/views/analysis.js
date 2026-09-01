@@ -21,7 +21,7 @@ export async function renderAnalysis(container) {
   const data = getCache();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   const weekSchedules = data.schedules.filter(s => s.date >= weekStart && s.date <= getWeekDates(weekStart)[6]);
-  const ctx = buildContext(data.staffs, weekSchedules, data.leaves, projectById);
+  const ctx = buildContext(data.staffs, weekSchedules, projectById);
 
   container.innerHTML = '';
   const bar = document.createElement('div');
@@ -51,9 +51,16 @@ export async function renderAnalysis(container) {
     <div class="stat"><div class="stat-value"${overCount ? ' style="color:#dc2626"' : ''}>${overCount}</div><div class="stat-label">疲劳超限</div></div>`;
   container.appendChild(statRow);
 
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  const legend = document.createElement('div');
+  legend.className = 'chart-legend';
+  legend.innerHTML = `
+    <span class="lg-item"><i class="lg-swatch lg-fatigue"></i>累计劳累积分</span>`;
   const wrap = document.createElement('div');
   wrap.className = 'chart-wrap';
-  container.appendChild(wrap);
+  card.append(legend, wrap);
+  container.appendChild(card);
   if (activeStaffs.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chart-empty';
@@ -105,58 +112,64 @@ function draw(canvas, staffs, ctx) {
   const active = staffs.filter(s => s.status !== 'left');
   if (active.length === 0) return;
   const sorted = [...active].sort((a, b) => (ctx.weeklyFatigue.get(b.id) ?? 0) - (ctx.weeklyFatigue.get(a.id) ?? 0));
-  const pad = { top: 30, right: 20, bottom: 50, left: 40 };
+  const pad = { top: 26, right: 20, bottom: 50, left: 40 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
   const groupW = innerW / sorted.length;
-  const barW = Math.min(30, groupW * 0.35);
-  const maxFatigue = Math.max(6, ...sorted.map(s => ctx.weeklyFatigue.get(s.id) ?? 0));
-  const maxHeavy = Math.max(1, ...sorted.map(s => ctx.heavyCounts.get(s.id) ?? 0));
+  const barW = Math.min(34, groupW * 0.4);
+  // 纵轴整数刻度：默认 0-6，数据超限自动扩到 8/10/12…
+  const rawMax = Math.max(6, ...sorted.map(s => ctx.weeklyFatigue.get(s.id) ?? 0));
+  const NICE = [[6, 6], [8, 4], [10, 5], [12, 6], [16, 4], [20, 5], [24, 6], [30, 6], [36, 6], [48, 8], [60, 10]];
+  const [axisMax, divisions] = NICE.find(([m]) => rawMax <= m) ?? [Math.ceil(rawMax / 10) * 10, 10];
 
-  // 网格线
-  g.strokeStyle = '#ece7f3';
-  g.lineWidth = 1;
-  for (let i = 0; i <= 6; i++) {
-    const y = pad.top + innerH - (i / 6) * innerH;
+  // 网格线（虚线）+ 左侧刻度数值
+  g.font = '10px sans-serif';
+  g.textAlign = 'right';
+  for (let i = 1; i <= divisions; i++) {
+    const y = pad.top + innerH - (i / divisions) * innerH;
+    g.strokeStyle = '#ece7f3';
+    g.lineWidth = 1;
+    g.setLineDash([4, 4]);
     g.beginPath(); g.moveTo(pad.left, y); g.lineTo(W - pad.right, y); g.stroke();
+    g.fillStyle = '#9b91a7';
+    g.fillText(String((axisMax / divisions) * i), pad.left - 6, y + 3);
   }
+  g.setLineDash([]);
+  // 底部基线
+  g.strokeStyle = '#e0d2ef';
+  g.beginPath(); g.moveTo(pad.left, pad.top + innerH); g.lineTo(W - pad.right, pad.top + innerH); g.stroke();
 
   const fatigueGrad = g.createLinearGradient(0, pad.top, 0, pad.top + innerH);
   fatigueGrad.addColorStop(0, '#b186d6');
   fatigueGrad.addColorStop(1, '#5a1d78');
-  const heavyGrad = g.createLinearGradient(0, pad.top, 0, pad.top + innerH);
-  heavyGrad.addColorStop(0, '#f87171');
-  heavyGrad.addColorStop(1, '#dc2626');
 
   sorted.forEach((s, i) => {
     const cx = pad.left + groupW * i + groupW / 2;
     const fatigue = ctx.weeklyFatigue.get(s.id) ?? 0;
-    const heavy = ctx.heavyCounts.get(s.id) ?? 0;
-    // 劳累柱（紫渐变，圆角）
-    const fh = (fatigue / maxFatigue) * innerH;
-    g.fillStyle = fatigueGrad;
-    roundedBar(g, cx - barW - 3, pad.top + innerH - fh, barW, fh, 4);
-    // 高强度柱（红渐变，圆角）
-    const hh = (heavy / maxHeavy) * innerH;
-    g.fillStyle = heavyGrad;
-    roundedBar(g, cx + 3, pad.top + innerH - hh, barW, hh, 4);
-    // 姓名（超限标红）
     const over = fatigue > s.maxWeeklyFatigue;
+    // 劳累柱（紫渐变，圆角）——全图唯一柱，高度即积分
+    const fh = (fatigue / axisMax) * innerH;
+    const barTop = pad.top + innerH - fh;
+    g.fillStyle = fatigueGrad;
+    roundedBar(g, cx - barW / 2, barTop, barW, fh, 4);
+    // 姓名（超限标红）
     g.fillStyle = over ? '#dc2626' : '#3d3747';
     g.font = over ? 'bold 12px sans-serif' : '12px sans-serif';
     g.textAlign = 'center';
     g.fillText(s.name, cx, H - 20);
-    // 数值
-    g.fillStyle = '#5a1d78';
-    g.font = '11px sans-serif';
-    g.fillText(String(fatigue), cx - barW / 2 - 3, pad.top + innerH - fh - 4);
-    g.fillStyle = '#dc2626';
-    g.fillText(String(heavy), cx + barW / 2 + 3, pad.top + innerH - hh - 4);
-    // 超限标注
+    // 柱顶：超限红章或积分数值
+    g.textAlign = 'center';
     if (over) {
+      g.font = 'bold 10px sans-serif';
+      const bw = g.measureText('超限').width + 10;
       g.fillStyle = '#dc2626';
-      g.font = 'bold 12px sans-serif';
-      g.fillText('超限', cx, pad.top + 12);
+      roundedBar(g, cx - bw / 2, barTop - 18, bw, 15, 7.5);
+      g.fillStyle = '#fff';
+      g.fillText('超限', cx, barTop - 7);
+    } else {
+      g.fillStyle = '#5a1d78';
+      g.font = '11px sans-serif';
+      g.fillText(String(fatigue), cx, barTop - 4);
     }
   });
 }

@@ -1,17 +1,16 @@
 import * as db from './db.js';
 import { DEFAULT_SETTINGS } from './model.js';
 
-const cache = { projects: [], staffs: [], schedules: [], leaves: [] };
+const cache = { projects: [], staffs: [], schedules: [] };
 
 // cache 是唯一真源，视图层通过 getCache() 读。loadAll 仅在初始化/导入/重置后调用（从持久层重建 cache）。
 export async function loadAll() {
-  const [projects, staffs, schedules, leaves] = await Promise.all([
-    db.getAll('projects'), db.getAll('staffs'), db.getAll('schedules'), db.getAll('leaves'),
+  const [projects, staffs, schedules] = await Promise.all([
+    db.getAll('projects'), db.getAll('staffs'), db.getAll('schedules'),
   ]);
   cache.projects = projects;
   cache.staffs = staffs;
   cache.schedules = schedules;
-  cache.leaves = leaves;
   return cache;
 }
 
@@ -33,9 +32,7 @@ function removeCache(storeName, id) {
 export async function saveProject(p) { await db.put('projects', p); upsertCache('projects', p); }
 export async function saveStaff(s) { await db.put('staffs', s); upsertCache('staffs', s); }
 export async function saveSchedule(sch) { await db.put('schedules', sch); upsertCache('schedules', sch); }
-export async function saveLeave(l) { await db.put('leaves', l); upsertCache('leaves', l); }
 export async function removeSchedule(id) { await db.remove('schedules', id); removeCache('schedules', id); }
-export async function removeLeave(id) { await db.remove('leaves', id); removeCache('leaves', id); }
 export async function resetAll() { await db.clearAll(); await loadAll(); }
 
 export async function exportJSON() {
@@ -45,7 +42,8 @@ export async function exportJSON() {
 export async function importJSON(text) {
   try {
     const data = JSON.parse(text);
-    for (const key of ['projects', 'staffs', 'schedules', 'leaves']) {
+    // 只要求核心三表；旧备份文件中的 leaves 字段（请假记录）已废弃，导入时忽略
+    for (const key of ['projects', 'staffs', 'schedules']) {
       if (!Array.isArray(data[key])) return { ok: false, message: `缺少 ${key} 数组` };
     }
     await Promise.all(Object.keys(cache).map(name => db.writeAll(name, data[name])));

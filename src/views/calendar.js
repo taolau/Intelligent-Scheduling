@@ -3,8 +3,8 @@ import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
-import { getCache, saveSchedule, saveLeave, getSettings, removeSchedule } from '../data/store.js';
-import { createSchedule, createLeave, SLOT_LABELS } from '../data/model.js';
+import { getCache, saveSchedule, getSettings, removeSchedule } from '../data/store.js';
+import { createSchedule, SLOT_LABELS } from '../data/model.js';
 import { openModal } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
@@ -14,7 +14,7 @@ import { createSelect } from '../ui/select.js';
 import { ICON_FIRE } from '../ui/icons.js';
 
 let currentWeekStart = getWeekStart(todayStr());
-let data = { projects: [], staffs: [], schedules: [], leaves: [] };
+let data = { projects: [], staffs: [], schedules: [] };
 let ctx = null;
 
 // ===== 视图维度（总览/项目/人员），localStorage 持久记忆 =====
@@ -42,6 +42,7 @@ const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
+const ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M6 9l6 6 6-6"/></svg>';
 
 export async function renderCalendar(container) {
   data = getCache();
@@ -49,7 +50,7 @@ export async function renderCalendar(container) {
   if (viewMode === 'project' && !data.projects.some(p => p.id === viewTargetId)) { viewMode = 'overview'; viewTargetId = ''; persistViewState(); }
   if (viewMode === 'staff' && !data.staffs.some(s => s.id === viewTargetId)) { viewMode = 'overview'; viewTargetId = ''; persistViewState(); }
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  ctx = buildContext(data.staffs, data.schedules, data.leaves, projectById, getSettings());
+  ctx = buildContext(data.staffs, data.schedules, projectById, getSettings());
 
   container.innerHTML = '';
   const bar = document.createElement('div');
@@ -103,11 +104,28 @@ export async function renderCalendar(container) {
   label.className = 'week-label';
   label.textContent = getWeekLabel(currentWeekStart);
   const todayBtn = btn('今天');
-  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK), exportBtn = btn('导出排班表', false, false, ICON_EXPORT), imgBtn = btn('导出图片', false, false, ICON_IMAGE);
+  const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK);
+  // 合并导出入口：一个「导出」按钮 hover 下拉出 Excel/图片两项（纯 CSS hover 显隐，无需 JS 管理开合）
+  const exportWrap = document.createElement('div');
+  exportWrap.className = 'cal-export';
+  const exportBtn = btn('导出', false, false, ICON_EXPORT);
+  exportBtn.innerHTML += ICON_CARET;
+  const exportMenu = document.createElement('div');
+  exportMenu.className = 'cal-export-menu';
+  const excelItem = document.createElement('button');
+  excelItem.type = 'button';
+  excelItem.className = 'cal-export-item';
+  excelItem.innerHTML = `${ICON_EXPORT}<span>导出 Excel</span>`;
+  const imgItem = document.createElement('button');
+  imgItem.type = 'button';
+  imgItem.className = 'cal-export-item';
+  imgItem.innerHTML = `${ICON_IMAGE}<span>导出图片</span>`;
+  exportMenu.append(excelItem, imgItem);
+  exportWrap.append(exportBtn, exportMenu);
   left.append(prev, label, next, todayBtn);
   // 人员维度为只读视图：隐藏智能排班/批量铺排（导出仍可用，截图跟随当前视图）
-  if (viewMode === 'staff') right.append(exportBtn, imgBtn);
-  else right.append(autoBtn, bulkBtn, exportBtn, imgBtn);
+  if (viewMode === 'staff') right.append(exportWrap);
+  else right.append(autoBtn, bulkBtn, exportWrap);
   bar.append(left, right);
   container.appendChild(bar);
 
@@ -116,8 +134,8 @@ export async function renderCalendar(container) {
   todayBtn.onclick = () => { currentWeekStart = getWeekStart(todayStr()); renderCalendar(container); };
   autoBtn.onclick = () => smartFill();
   bulkBtn.onclick = () => bulkPlanDialog();
-  exportBtn.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, currentWeekStart);
-  imgBtn.onclick = async () => {
+  excelItem.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, currentWeekStart);
+  imgItem.onclick = async () => {
     if (!grid.isConnected) {
       showToast('当前视图暂无班次，无可导出的排班图', 'error');
       return;
@@ -125,7 +143,7 @@ export async function renderCalendar(container) {
     const viewLabel = viewMode === 'overview' ? '总览'
       : viewMode === 'project' ? `任务：${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
       : `人员：${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
-    imgBtn.disabled = true;
+    imgItem.disabled = true;
     showToast('正在生成图片…');
     try {
       await exportWeekImage(grid, `Numbers-排班图-${currentWeekStart}.png`, getWeekLabel(currentWeekStart), viewLabel);
@@ -133,7 +151,7 @@ export async function renderCalendar(container) {
     } catch (e) {
       showToast(`导出失败：${e.message}`, 'error');
     } finally {
-      imgBtn.disabled = false;
+      imgItem.disabled = false;
     }
   };
 
@@ -294,6 +312,7 @@ function renderScheduleCard(sch, readOnly = false) {
   const title = document.createElement('div');
   title.textContent = `${project?.name ?? sch.projectId}`;
   title.className = 'sch-title';
+  title.title = `${project?.name ?? sch.projectId}`; // 省略号截断后 hover 看全名
   card.appendChild(title);
 
   const meta = document.createElement('div');
@@ -321,10 +340,10 @@ function renderScheduleCard(sch, readOnly = false) {
     chip.textContent = staff?.name ?? sid;
     chip.className = staffChipClass(staff, sch.date);
     chip.title = staffChipTitle(staff, sch.date);
-    if (!readOnly) { // 只读视图：不可拖拽，仍可点击标记请假
+    if (!readOnly) { // 只读视图：不可拖拽，仍可点击人名进入替换弹窗
       enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
     }
-    chip.onclick = (e) => { e.stopPropagation(); staffDialog(staff, sch); };
+    chip.onclick = (e) => { e.stopPropagation(); openReplaceDialog(staff, sch); };
     names.appendChild(chip);
   }
   card.appendChild(names);
@@ -333,12 +352,14 @@ function renderScheduleCard(sch, readOnly = false) {
   cap.className = `sch-capacity${filled >= capacity ? ' ok' : ''}`;
   cap.textContent = filled >= capacity ? '已满' : (filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`);
   if (filled === 0) {
+    // 底部一行：需 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
     const row = document.createElement('div');
     row.className = 'sch-cap-row';
     const smart = document.createElement('button');
     smart.type = 'button';
     smart.className = 'sch-smart';
-    smart.textContent = '＋ 智能排班';
+    smart.innerHTML = ICON_ZAP;
+    smart.title = '智能排班：为本班次自动填充人员';
     smart.onclick = (e) => { e.stopPropagation(); smartFillOne(sch); };
     row.append(cap, smart);
     card.appendChild(row);
@@ -679,64 +700,110 @@ async function smartFill() {
   renderCalendar(document.querySelector('#view'));
 }
 
-function staffDialog(staff, sch) {
+function openReplaceDialog(staff, sch) {
+  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+  const STATUS_TXT = { new: '新入', rest: '休假中', left: '已退出' };
   const body = document.createElement('div');
-  body.innerHTML = `<p><strong>${staff.name}</strong>（${staff.status}）</p><p>本周劳累积分：${ctx.weeklyFatigue.get(staff.id) ?? 0}</p>`;
-  const footer = document.createElement('div');
-  const leaveBtn = document.createElement('button');
-  leaveBtn.type = 'button';
-  leaveBtn.className = 'btn btn-danger';
-  leaveBtn.textContent = '标记请假并找替补';
-  footer.appendChild(leaveBtn);
-  const modal = openModal({ title: staff.name, body, footer });
-  leaveBtn.onclick = async () => {
-    const l = createLeave({ staffId: staff.id, date: sch.date });
-    await saveLeave(l);
-    modal.close();
-    const daySchedules = data.schedules.filter(s => s.date === sch.date && s.staffIds.includes(staff.id));
-    for (const s of daySchedules) {
-      const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+
+  const head = document.createElement('div');
+  head.className = 'rpl-head';
+  const title = document.createElement('div');
+  title.className = 'rpl-title';
+  title.innerHTML = `<span>${staff.name}</span>${STATUS_TXT[staff.status] ? `<span class="assign-tag">${STATUS_TXT[staff.status]}</span>` : ''}`;
+  const sub = document.createElement('div');
+  sub.className = 'rpl-sub';
+  sub.textContent = `本周劳累积分 ${ctx.weeklyFatigue.get(staff.id) ?? 0}/${staff.maxWeeklyFatigue}`;
+  head.append(title, sub);
+  body.appendChild(head);
+
+  const daySchedules = data.schedules.filter(s => s.date === sch.date && s.staffIds.includes(staff.id));
+  if (daySchedules.length === 0) {
+    const none = document.createElement('div');
+    none.className = 'asg-empty';
+    none.textContent = '当天没有排班';
+    body.appendChild(none);
+  }
+
+  openModal({ title: `替换 · ${staff.name}`, body });
+
+  function renderGroup(container, s) {
+    const group = document.createElement('div');
+    group.className = 'rpl-group';
+    const gTitle = document.createElement('div');
+    gTitle.className = 'rpl-group-title';
+    gTitle.textContent = `${s.date} ${s.slotLabel} · ${projectById[s.projectId]?.name ?? s.projectId}`;
+    const list = document.createElement('div');
+    list.className = 'rpl-list';
+    group.append(gTitle, list);
+
+    function renderCandidates() {
+      list.innerHTML = '';
       const recom = recommendSubstitutes(data.staffs, s, projectById, ctx, staff.id);
-      if (recom.length > 0) {
-        s.staffIds = s.staffIds.filter(id => id !== staff.id);
-        await saveSchedule(s);
-        await openSubstituteModal(s, recom);
-      } else {
-        s.staffIds = s.staffIds.filter(id => id !== staff.id);
-        await saveSchedule(s);
-        showToast(`班次 ${s.date} ${s.slotLabel} 无可替补人员`, 'error');
+      if (recom.length === 0) {
+        const none = document.createElement('div');
+        none.className = 'asg-empty';
+        none.textContent = '无可替补人员';
+        list.appendChild(none);
+        return;
+      }
+      for (const r of recom) {
+        const row = document.createElement('div');
+        row.className = 'assign-row pickable';
+        const nm = document.createElement('span');
+        nm.className = 'assign-name';
+        nm.textContent = r.staff.name;
+        const why = document.createElement('span');
+        why.className = 'assign-why';
+        why.textContent = r.reasons.join('；');
+        const info = document.createElement('span');
+        info.className = 'assign-info';
+        info.textContent = `得分 ${r.score}`;
+        const add = document.createElement('span');
+        add.className = 'assign-add';
+        add.textContent = '选此替补';
+        row.append(nm, why, info, add);
+        row.onclick = async () => {
+          const project = projectById[s.projectId];
+          // 一减一增：移除被替换者计数、累加替补者计数，ctx 同步防算法层计数错乱
+          ctx.weeklyFatigue.set(staff.id, Math.max(0, (ctx.weeklyFatigue.get(staff.id) ?? 0) - project.fatigueScore));
+          if (project.fatigueScore === 3) ctx.heavyCounts.set(staff.id, Math.max(0, (ctx.heavyCounts.get(staff.id) ?? 0) - 1));
+          const srcDaily = `${staff.id}|${s.date}`;
+          const srcSlot = `${staff.id}|${s.date}|${s.slotLabel}`;
+          ctx.dailyCounts.set(srcDaily, Math.max(0, (ctx.dailyCounts?.get(srcDaily) ?? 0) - 1));
+          ctx.slotCounts.set(srcSlot, Math.max(0, (ctx.slotCounts?.get(srcSlot) ?? 0) - 1));
+          const tgtDaily = `${r.staff.id}|${s.date}`;
+          const tgtSlot = `${r.staff.id}|${s.date}|${s.slotLabel}`;
+          ctx.dailyCounts.set(tgtDaily, (ctx.dailyCounts?.get(tgtDaily) ?? 0) + 1);
+          ctx.slotCounts.set(tgtSlot, (ctx.slotCounts?.get(tgtSlot) ?? 0) + 1);
+          ctx.weeklyFatigue.set(r.staff.id, (ctx.weeklyFatigue.get(r.staff.id) ?? 0) + project.fatigueScore);
+          if (project.fatigueScore === 3) ctx.heavyCounts.set(r.staff.id, (ctx.heavyCounts.get(r.staff.id) ?? 0) + 1);
+
+          s.staffIds = s.staffIds.filter(id => id !== staff.id);
+          s.staffIds.push(r.staff.id);
+          await saveSchedule(s);
+          group.classList.add('done');
+          list.innerHTML = '';
+          const done = document.createElement('div');
+          done.className = 'rpl-done';
+          done.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M20 6L9 17l-5-5"/></svg>已由 ' + r.staff.name + ' 替换';
+          group.appendChild(done);
+          sub.textContent = `本周劳累积分 ${ctx.weeklyFatigue.get(staff.id) ?? 0}/${staff.maxWeeklyFatigue}`;
+          showToast(`已由 ${r.staff.name} 替换`, 'success');
+          renderCalendar(document.querySelector('#view'));
+          // 其余未替换组的候选基于旧 ctx 计算，替换后可能过期（如替补者当日已达上限），重算
+          for (const other of container.children) {
+            if (other !== group && !other.classList.contains('done')) other._rerender?.();
+          }
+        };
+        list.appendChild(row);
       }
     }
-    renderCalendar(document.querySelector('#view'));
-  };
-}
-
-function openSubstituteModal(sch, recom) {
-  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  const body = document.createElement('div');
-  body.innerHTML = `<p><strong>${sch.date} ${sch.slotLabel} ${projectById[sch.projectId]?.name}</strong> 候选替补：</p>`;
-  for (const r of recom) {
-    const row = document.createElement('div');
-    row.style.cssText = 'border:1px solid #eee;border-radius:6px;padding:10px;margin:8px 0;';
-    const name = document.createElement('div');
-    name.innerHTML = `<strong>${r.staff.name}</strong>（得分 ${r.score}）`;
-    const why = document.createElement('div');
-    why.style.cssText = 'color:#6a6178;font-size:13px;';
-    why.textContent = r.reasons.join('；');
-    const pick = document.createElement('button');
-    pick.type = 'button';
-    pick.className = 'btn btn-success btn-sm';
-    pick.textContent = '选此替补';
-    pick.onclick = async () => {
-      sch.staffIds = [...sch.staffIds, r.staff.id];
-      await saveSchedule(sch);
-      showToast('已替换', 'success');
-      renderCalendar(document.querySelector('#view'));
-    };
-    row.append(name, why, pick);
-    body.appendChild(row);
+    renderCandidates();
+    group._rerender = renderCandidates;
+    container.appendChild(group);
   }
-  openModal({ title: '替补推荐', body });
+
+  for (const s of daySchedules) renderGroup(body, s);
 }
 
 function manualCreate(date, slotLabel, presetProjectId) {

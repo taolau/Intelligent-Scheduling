@@ -3,7 +3,7 @@
 // 本层维护内存 Map（id→record）作索引：读写走 O(1) Map 操作，首次访问某 store 时从 localStorage 加载一次，
 // 每次变更同步序列化整表写回 localStorage。视图层高频读（getAll）不再反复 JSON.parse。
 const PREFIX = 'is_sched:';
-const STORES = ['projects', 'staffs', 'schedules', 'leaves'];
+const STORES = ['projects', 'staffs', 'schedules'];
 
 const maps = new Map();
 

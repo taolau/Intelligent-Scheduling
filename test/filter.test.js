@@ -9,7 +9,7 @@ const P103 = createProject({ id: 'P103', name: '巡逻', fatigueScore: 1, slots:
 const projectById = { P101, P102, P103 };
 
 function base() {
-  return { schedules: [], leaves: [], weeklyFatigue: new Map(), heavyCounts: new Map(),
+  return { schedules: [], weeklyFatigue: new Map(), heavyCounts: new Map(),
            dailyCounts: new Map(), slotCounts: new Map(), settings: { ...DEFAULT_SETTINGS } };
 }
 
@@ -55,14 +55,6 @@ test('新入可排非高强度', () => {
   const slot2 = { date: '2026-08-24', projectId: 'P102', slotLabel: '早' };
   const r = filterCandidate(s, slot2, projectById, base());
   assert.equal(r.ok, true);
-});
-
-test('当日请假拒绝', () => {
-  const s = createStaff({ id: 'S1', name: '张三' });
-  const ctx = base();
-  ctx.leaves = [{ staffId: 'S1', date: '2026-08-24' }];
-  const r = filterCandidate(s, slot, projectById, ctx);
-  assert.equal(r.ok, false);
 });
 
 test('周疲劳超限拒绝', () => {

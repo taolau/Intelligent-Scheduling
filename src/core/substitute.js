@@ -3,7 +3,7 @@ import { computeTeamAvg, scoreCandidate } from './score.js';
 import { getWeekStart, todayStr } from './week.js';
 import { DEFAULT_SETTINGS } from '../data/model.js';
 
-export function buildContext(staffs, schedules, leaves, projectById, settings = DEFAULT_SETTINGS) {
+export function buildContext(staffs, schedules, projectById, settings = DEFAULT_SETTINGS) {
   const weekStart = getWeekStart(schedules[0]?.date ?? todayStr());
   const weeklyFatigue = new Map();
   const heavyCounts = new Map();
@@ -21,7 +21,7 @@ export function buildContext(staffs, schedules, leaves, projectById, settings = 
     }
   }
   const teamAvg = computeTeamAvg(staffs, weeklyFatigue);
-  return { weeklyFatigue, heavyCounts, teamAvg, weekStart, leaves, schedules, dailyCounts, slotCounts, settings };
+  return { weeklyFatigue, heavyCounts, teamAvg, weekStart, schedules, dailyCounts, slotCounts, settings };
 }
 
 export function recommendSubstitutes(staffs, schedule, projectById, ctx, excludeStaffId, topN = 3) {
@@ -31,7 +31,6 @@ export function recommendSubstitutes(staffs, schedule, projectById, ctx, exclude
   for (const staff of candidates) {
     const res = filterCandidate(staff, schedule, projectById, {
       schedules: ctx.schedules ?? [],
-      leaves: ctx.leaves ?? [],
       weeklyFatigue: ctx.weeklyFatigue,
       heavyCounts: ctx.heavyCounts,
       dailyCounts: ctx.dailyCounts,

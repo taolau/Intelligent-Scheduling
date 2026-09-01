@@ -20,7 +20,6 @@ test('loadAll 初始为空', () => {
   assert.deepEqual(c.projects, []);
   assert.deepEqual(c.staffs, []);
   assert.deepEqual(c.schedules, []);
-  assert.deepEqual(c.leaves, []);
 });
 
 test('saveProject 后 getCache 反映且 localStorage 已落盘', async () => {
@@ -56,7 +55,7 @@ test('importJSON 批量替换并同步 cache', async () => {
     projects: [{ id: 'P1', name: '新任务', fatigueScore: 2, requiredCapacity: 2, weekDays: [], slots: [], active: true }],
     staffs: [{ id: 'S1', name: '张三', allowedProjects: ['P1'], preferredProjects: [], bannedProjects: [], maxWeeklyFatigue: 6, maxHeavyTaskCount: 1, status: 'active' }],
     schedules: [],
-    leaves: [],
+    leaves: [], // 旧备份遗留字段：废弃后导入应忽略，不写入 cache
   });
   const r = await store.importJSON(text);
   assert.equal(r.ok, true);
@@ -65,6 +64,7 @@ test('importJSON 批量替换并同步 cache', async () => {
   assert.equal(c.projects[0].name, '新任务');
   assert.equal(c.staffs.length, 1);
   assert.equal(c.staffs[0].name, '张三');
+  assert.ok(!('leaves' in c));
 });
 
 test('importJSON 缺字段返回失败', async () => {

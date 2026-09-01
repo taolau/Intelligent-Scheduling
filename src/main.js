@@ -87,7 +87,7 @@ function initBackup() {
 
     const tip = document.createElement('div');
     tip.className = 'bk-tip';
-    tip.innerHTML = `${ICON_SHIELD}<span>定期导出备份可防止数据丢失。备份为 JSON 文件，包含<strong>人员 / 任务 / 班次 / 请假</strong>全部数据。</span>`;
+    tip.innerHTML = `${ICON_SHIELD}<span>定期导出备份可防止数据丢失。备份为 JSON 文件，包含<strong>人员 / 任务 / 班次</strong>全部数据。</span>`;
 
     const cards = document.createElement('div');
     cards.className = 'bk-cards';

@@ -1,3 +1,5 @@
+import { ICON_X } from './icons.js';
+
 export function openModal({ title, body, footer, boxClass = '' }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -5,7 +7,16 @@ export function openModal({ title, body, footer, boxClass = '' }) {
   box.className = `modal-box${boxClass ? ` ${boxClass}` : ''}`;
   const header = document.createElement('div');
   header.className = 'modal-header';
-  header.textContent = title;
+  const titleEl = document.createElement('div');
+  titleEl.className = 'modal-title';
+  titleEl.textContent = title;
+  const xBtn = document.createElement('button');
+  xBtn.type = 'button';
+  xBtn.className = 'modal-x';
+  xBtn.title = '关闭';
+  xBtn.innerHTML = ICON_X;
+  xBtn.onclick = close;
+  header.append(titleEl, xBtn);
   const bodyEl = document.createElement('div');
   bodyEl.className = 'modal-body';
   bodyEl.append(body);
@@ -20,7 +31,6 @@ export function openModal({ title, body, footer, boxClass = '' }) {
   footerEl.appendChild(closeBtn);
   box.append(header, bodyEl, footerEl);
   overlay.appendChild(box);
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
   document.body.appendChild(overlay);
   document.addEventListener('keydown', onKeydown);
   closeBtn.focus();
