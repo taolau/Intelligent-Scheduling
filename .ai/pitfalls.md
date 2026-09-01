@@ -199,3 +199,11 @@
 - **根因**：候选列表是「打开时 ctx 的快照」；一组替换执行后 ctx 已变化（替补者当日任务数/周疲劳/时段数 +1），其余组候选未重算 → 李四已被替换进浇花班次后，搬运班次的候选里仍有李四，点击后当日任务数 3 > 上限 2，超限班次被静默写入
 - **解决**：替换成功后重算其余未完成组的候选（渲染抽成闭包 `group._rerender`，替换后遍历 `container.children` 重渲染）；对比先例：排班分配弹窗（scheduleDialog）每次操作后 `renderBody()` 整体重绘，本弹窗初版漏了此环节，浏览器实测（Playwright 注入测试班次 + 真实点击）暴露
 - **启示**：凡弹窗内含「基于当前计数/积分生成的候选、推荐、可选列表」，任何会改变 ctx 的操作（加入/移除/替换）之后必须重算同一列表；交互态列表 ≠ 静态快照
+
+## 25. 可搜索下拉点击选项无反应、面板直接取消：mousedown 失焦打断 IME 组合触发选项 DOM 重建
+
+- **报错**：搜索框输入后点击过滤结果，面板直接关闭、选择不生效（表现像 onclick 没绑上或选项被遮挡，代码审查 onclick 绑定完全正常）
+- **场景**：周历人员/项目维度可搜索下拉（createSelect `searchable:true`），中文输入法打拼音候选未确认时直接鼠标点选列表选项
+- **根因**：四步竞态链——①点击选项瞬间 mousedown 使搜索框失焦；②失焦强制结束未确认的输入法组合，浏览器补发一次 input 事件；③input → renderOptions() 重建全部选项 DOM，被按住的原选项节点脱离文档；④click 只派发在 mousedown/mouseup 的公共祖先上，公共祖先已在 panel 外 → 冒泡到 document 的「点外关闭」→ 纯关闭（choose 从未执行）
+- **解决**：选项节点上 `mousedown` 事件 `preventDefault()`（阻止焦点转移：搜索框不失焦 → 组合不被打断 → DOM 稳定 → click 正常落在原选项）；select.js renderOptions 循环内一行。**伴随修复**：onKey 回车分支 `choose(activeIndex)` 误传索引数字（0 被 `!o` 判空 return 选第一项无反应，非 0 取 `.value` 得 undefined）→ 改 `choose(view[activeIndex])`；搜索过滤后 activeIndex 未夹取（仍是全量列表旧值会越界）→ renderOptions 内重置
+- **启示**：可搜索下拉的选项必须 mousedown preventDefault（业界标准做法），单纯绑 onclick 挡不住失焦重建竞态；「点击无反应」类 bug 先查 mousedown~click 之间 DOM 是否被重建——click 的事件目标由 mousedown/mouseup 公共祖先决定，不是鼠标按住时的那个节点

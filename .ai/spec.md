@@ -22,7 +22,7 @@
 | 框架 | **无框架**，纯原生 ES Modules + 标准 Web API |
 | 构建 | **开发多模块 + 发布单文件**：开发用 Vite dev server（模块化）；发布用 esbuild 打包为 `dist/index.html` 单文件，双击即用 |
 | 外部依赖 | SheetJS（XLSX，Excel 导入导出）+ html2canvas（周历导出图片，08-31 突破「仅 SheetJS」约束） |
-| 存储 | localStorage（本地持久化）；db 层内存 Map 索引（O(1) CRUD、首次访问才从 localStorage 加载）；store 层增量缓存为唯一真源（视图经 getCache() 读、saveXxx 增量更新，loadAll 仅初始化/导入/重置） |
+| 存储 | localStorage（本地持久化）；db 层内存 Map 索引（O(1) CRUD、首次访问才从 localStorage 加载）；store 层增量缓存为唯一真源（视图经 getCache() 读、saveXxx 增量更新，loadAll 仅初始化/导入/重置）；**key 全量集中登记**于 `src/data/keys.js`（KEYS 常量 + STORES 表名，业务代码禁手写 `is_sched:` 字符串），台账见 `docs/storage.md` |
 | 日历 | **不引入 FullCalendar**，自建周历网格视图（贴合"按星期几重复"场景） |
 | 拖拽 | HTML5 Drag and Drop API |
 | 图表 | 原生 `<canvas>` 自绘柱状图（疲劳分析） |
@@ -40,6 +40,7 @@ Intelligent-Scheduling/
   index.html              # 入口（发布时 = esbuild 打包产物）
   src/
     data/                 # 数据层
+      keys.js             #   localStorage key 集中登记处（KEYS + STORES；新 key 唯一入口）
       db.js               #   localStorage 封装 + 模型定义
       store.js            #   业务数据访问（项目/人员/班次）
     core/                 # 算法层（纯函数，无 DOM）
@@ -248,6 +249,10 @@ $$Score = 擅长加分 + 均衡加分$$
 ---
 
 ## 7. 变更记录
+
+- 2026-09-01：**localStorage key 规范化（key 即库表：集中登记 + 台账文档，Tao 提出「key 当库表运用，妥善维护，留本地说明」）**。①**keys.js 单一真源**：新建 `src/data/keys.js`（`KEYS` 全量 key 常量 + `STORES` 业务表名数组），db 层改 `KEYS[storeName]` 查表读写——未登记表名取 undefined 天然拦截；业务代码禁止手写 `is_sched:` 字符串，**新增 key 唯一入口 = keys.js 定义 + docs/storage.md 登记**。②**7 个 key 全量收编**：三业务表（projects/staffs/schedules）+ settings + cal_view + config_tab + sidebar；`sidebar-collapsed`（唯一无前缀的历史遗留，连字符命名，DevTools 按 `is_sched` 过滤会漏）改名 `is_sched:sidebar` 统一前缀——旧值不迁移不留兼容码，首次打开侧边栏回默认展开态（无感），DevTools 可手动删残留。③**清理/备份语义成文**（此前合理但无文档）：resetAll 只清业务三表（重置业务数据保留参数与界面偏好，有意设计）；JSON 备份仅含三核心表，settings 与 UI 状态是本机偏好不随备份迁移。④**台账**：新建 `docs/storage.md`——key 全量表（key/类别/格式/读写处/重置是否清理/是否进 JSON 备份）+ 维护规则（单一真源/命名规范/重置与备份语义/直接改 localStorage 需刷新）。⑤**测试硬编码保留（有意）**：store.test.js 两处 `'is_sched:projects'`/`'is_sched:schedules'` 字面量断言不变——测试职责是钉住真实落盘 key 名这一对外契约，改 import KEYS 会让 keys.js 写错时测试照样通过，失去校验意义。65 测试全通过。
+
+- 2026-09-01：**select 下拉组件优化批次（全站下拉受益，纯 UI/交互层，模型/算法零改动）**。①**滚动结构定稿（Tao 纠正确认）**：滚动只留 `.sel-list` 一层（max-height:224 + overflow-y:auto），`.sel-panel` 删 max-height/overflow——修复「panel 与 list 双滚动条」，且搜索框固定 panel 顶部不随列表滚动（弯路：曾收敛滚动到 panel 整层，搜索框被滚走）。②**选项文字靠左（Tao 拍板）**：勾选标记 `.sel-check` 改 absolute 定位到选项右侧（right:8px，`.sel-opt` 加 relative 锚点），废除原「文字左侧 22px 勾占位列」（窄面板观感似居中）；`.sel-opt-desc` 右移 22px 防与勾重叠；选项加原生 title 悬浮看全名；`.sel-opt-label` 独立样式（flex/ellipsis/padding/text-align）曾加入后被 Tao 否决全删——文字默认排布即可，勿过度设计。③**搜索选择三连修复（Tao 实测暴露）**：a) **IME 竞态**——点击选项瞬间 mousedown 使搜索框失焦，中文输入组合被打断时浏览器补发 input → renderOptions 重建选项 DOM → 原节点脱离文档 → click 落空冒泡到 document「点外关闭」（表现：一点搜索结果面板直接取消、选择无效）；修复 = 选项 mousedown preventDefault（搜索框不失焦、DOM 稳定，业界标准做法）。b) **Enter 传参错误**——onKey 回车分支 `choose(activeIndex)` 误传索引数字：0 被 `!o` 判空直接 return（选第一项无反应），非 0 取 `.value` 得 undefined（选完回占位符/视图异常）；改 `choose(view[activeIndex])`。c) **activeIndex 越界**——搜索过滤后键盘高亮索引仍是打开时全量列表的旧值；renderOptions 内夹取。
 
 - 2026-09-01：**基础配置卡片去悬浮**。theme.js 删除全局 `.card:hover` 的 `translateY(-2px)` 上浮与阴影加深，transition 去掉 transform 项；`.card` 全局唯一使用者为基础配置页人员/任务卡片（`card cfg-card`），分析页 `.chart-card`、备份弹窗 `.bk-card` 不受影响。与 09-01 疲劳分析统计卡去悬浮同趋势（全站卡片 hover 不再跳动）。
 - 2026-09-01：**请假概念移除，替换功能定稿（Tao 提议：标记请假不实用，无需维护状态）**。①**交互一步直达**：点击人名 → 直接打开「替换 · 姓名」弹窗（替代原 staffDialog 中间层 + 替补推荐弹窗，原实现当天多班次时循环叠开多个 modal 的体验问题一并解决）：头部姓名+状态徽标+周积分；当天全部班次分组卡 `.rpl-group`，每组 Top3 候选复用 assign-* 行样式（姓名+得分+推荐理由+「选此替补」hover 滑入），替换成功组绿底「✓ 已由 X 替换」；无候选灰化「无可替补人员」（不自动移除原人，原实现无候选也踢人）；当天无班次提示「当天没有排班」。②**语义**：替换=一减一增（移除被替换人+加入替补，人数不变），ctx 周疲劳/高强度/日任务数/时段数双向同步（吸取 08-28 拖拽移人 ctx 不同步教训）；**不产生 Leave 状态**，被替换人当天其余班次照常、仍可被排入其他班次（Tao 拍板：无「当天空闲」硬约束，更灵活）。③**数据/模型**：createLeave/saveLeave/removeLeave 全删，db STORES 与 cache/loadAll 去 leaves；importJSON 只要求 projects/staffs/schedules 三核心表，**旧备份文件 leaves 字段显式忽略**（旧备份仍可导入，测试断言 `!('leaves' in cache)`）。④**算法**：filter 删「当日请假」硬性过滤（原第 8 条）；`buildContext` 签名去掉 leaves 参数（calendar/analysis/测试同步）。⑤文案：备份提示去「请假」。测试删 2 个请假用例、补兼容断言，65 个全通过。

@@ -11,6 +11,7 @@ Intelligent-Scheduling/
   package.json        # scripts: dev(vite) / build(esbuild单文件) / test(node:test)
   build.js            # 打包脚本 → dist/index.html（开发多模块,发布单文件）
   dist/               # 构建产物（gitignore,仅 index.html）
+  docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则）
   test/               # node:test 单测（算法层+模型+数据层 db/store）
 ```
 
@@ -19,8 +20,9 @@ Intelligent-Scheduling/
 | 目录 | 文件 | 职责 | 依赖 |
 | --- | --- | --- | --- |
 | `data/` | `model.js` | 数据模型定义+校验（Project/Staff/Schedule） | 无 |
-| | `db.js` | localStorage 持久化 + 内存 Map 索引（CRUD + writeAll 批量写） | 无 |
-| | `store.js` | 增量缓存门面（saveXxx 增量更新 cache 不重读；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db |
+| | `keys.js` | localStorage key 集中登记处（KEYS 全量常量 + STORES 业务表名；新 key 唯一入口，配套 docs/storage.md） | 无 |
+| | `db.js` | localStorage 持久化 + 内存 Map 索引（CRUD + writeAll 批量写，KEYS[storeName] 查表读写） | keys |
+| | `store.js` | 增量缓存门面（saveXxx 增量更新 cache 不重读；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db/keys |
 | `core/` | `week.js` | 周/日期/时间工具（纯函数） | 无 |
 | | `expand.js` | 按 weekDays+slots 展开班次；`expandWeeks` 批量展开连续 N 周 | week |
 | | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
