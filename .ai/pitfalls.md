@@ -231,3 +231,19 @@
 - **根因**：`?? DEFAULT_SETTINGS` 只在 settings **整体为 undefined** 时兜底；settings 存在但**缺个别键**（部分传入/旧数据/不同调用方构造的局部 ctx）时解构得 `undefined` → `undefined * n = NaN`，且不报错一路算进 score 排序（静默错误）。项目里 store.getSettings 有 merge 层保证全键，容易误以为「settings 永远全键」，绕过 merge 直接构造 ctx 的调用（测试/新函数）即触发
 - **解决**：score.js 改逐键兜底 `ctx.settings?.preferredBonus ?? DEFAULT_SETTINGS.preferredBonus`（每键独立 ??）；同时补部分键传入的测试用例钉住
 - **启示**：凡消费「带默认值的配置对象」，不要整体解构一把 ?? 兜底——逐键 ?? 才免疫部分缺键；有 merge 层的配置数据只对走 merge 的路径成立，调用边界（测试、新入口）常直接传局部对象
+
+## 29. overflow:auto 滚动容器内 flex 纵向子项默认 flex-shrink 压缩 → 内容静默截断且滚动条不出现
+
+- **报错**：设置页矮视口下卡片中部内容（参数行）被截断；滚动条不出现、滚不动；`scrollHeight === clientHeight` 但内容明明超高
+- **场景**：`.set-groups { display:flex; flex-direction:column }` 容器（父链 flex:1; min-height:0; overflow-y:auto）内放多张白卡 `.set-group`（高约 700px 内容 vs 437px 可视），卡内 `overflow:hidden`
+- **根因**：flex 纵向容器主轴子项默认 `flex-shrink:1`——容器有确定高度（flex 布局定死）而子项总高超出时，flex 把子项**等比压缩变矮**而非溢出：卡被压扁、内容超出卡盒被 `overflow:hidden` 裁掉；压缩不产生溢出量，滚动容器 `scrollHeight` 不增长 → 无滚动条、中部内容（非底部）不可达。大视口下内容恰 ≤ 可视时不触发，只在窗口变矮时静默出现，极易误判为「卡片高度/布局 bug」
+- **解决**：滚动容器内 flex 纵向子项一律禁收缩 `.set-group { flex:none }`（或容器改 block，子项自然高触发滚动）
+- **启示**：凡是「固定高 + overflow auto」的容器，内部 flex 布局的**子项必须显式 flex:none/0**；排查「内容截断但无滚动条/滚不动」先量 scrollHeight vs clientHeight，相等且内容超即查 flex-shrink 压缩（压缩态下 scrollHeight 恒等于可视高）
+
+## 30. `Number(x) || 默认值` 兜底会吞合法输入 0
+
+- **报错**：设置页「高强度次数上限」填 0（合法语义 = 禁排高强度），保存后仍存 2（默认值）
+- **场景**：配置项保存逻辑 `Math.max(0, Number(input.value) || DEFAULT)`——本项目同类写法第二次出现（首次在 createStaff 修过 `|| 1` 吞 0，此次是 settingsDialog 保存路径漏网）
+- **根因**：`0 || default` 恒取 default（0 是 falsy）——「空值回退」的正确判定不能靠 truthiness，0 是合法业务值
+- **解决**：显式判空再取数 `value.trim() !== '' && Number.isFinite(n) ? Math.max(min, n) : DEFAULT`（isFinite 拦 NaN，trim 拦空串）
+- **启示**：凡数值输入「空/非法回默认」的兜底一律写成 isFinite + 非空判定；`||` truthiness 兜底只适用于「0 无意义」的字段——先问业务上 0 是否合法再决定兜底写法

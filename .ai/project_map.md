@@ -29,7 +29,7 @@ Intelligent-Scheduling/
 | | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
 | | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
 | `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
-| | `config.js` | 基础配置页（人员/任务**卡片网格**，开关切换状态、编辑弹窗；tab 记忆 is_sched:config_tab） | data+ui+excel |
+| | `config.js` | 数据配置页（三 tab：人员/任务/系统设置；**cfg-frame 框架**=tab+操作按钮固定、内容容器内滚；人员/任务**卡片网格**、开关状态切换、编辑弹窗；系统设置=左右双面板参数/规则页；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
 | | `icons.js` | 共享 SVG 图标常量（ICON_FIRE 劳累指数火焰等） | 无 |

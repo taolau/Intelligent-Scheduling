@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
-         validateProject, validateStaff, SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
+         validateProject, validateStaff, reconcileStaff, SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -85,10 +85,19 @@ test('createStaff 带默认值', () => {
   assert.deepEqual(s.allowedProjects, []);
   assert.deepEqual(s.preferredProjects, []);
   assert.deepEqual(s.bannedProjects, []);
-  assert.equal(s.maxWeeklyFatigue, 6);
-  assert.equal(s.maxHeavyTaskCount, 1);
+  assert.equal(s.maxWeeklyFatigue, 10);
+  assert.equal(s.maxHeavyTaskCount, 2);
   assert.equal(typeof s.joinedAt, 'number');
   assert.equal(s.restFrom, null);
+});
+
+test('createStaff 可注入系统默认上限（设置里可改）', () => {
+  const s = createStaff({ name: '张三' }, { maxWeeklyFatigue: 8, maxHeavyTaskCount: 3 });
+  assert.equal(s.maxWeeklyFatigue, 8);
+  assert.equal(s.maxHeavyTaskCount, 3);
+  // 显式字段优先于注入默认
+  const t = createStaff({ name: '李四', maxWeeklyFatigue: 6 }, { maxWeeklyFatigue: 8 });
+  assert.equal(t.maxWeeklyFatigue, 6);
 });
 
 test('createStaff rest 状态记录休假前状态', () => {
@@ -104,14 +113,89 @@ test('validateStaff: rest 必须记录 restFrom', () => {
   assert.ok(r.errors.some(e => e.field === 'status'));
 });
 
+test('validateStaff: 同一项目不能同时在可胜任与不合适中', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1', 'P2'],
+    bannedProjects: [{ projectId: 'P2', reason: '腰伤' }],
+  });
+  const r = validateStaff(s);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'allowedProjects'));
+});
+
+test('validateStaff: 擅长项目必须同时是可胜任项目', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1'],
+    preferredProjects: [{ projectId: 'P9', reason: '体力好' }],
+  });
+  const r = validateStaff(s);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'preferredProjects'));
+});
+
+test('reconcileStaff: 与不合适重叠的可胜任剔除、其余保留', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1', 'P2', 'P3'],
+    bannedProjects: [{ projectId: 'P2', reason: '腰伤' }],
+  });
+  const fix = reconcileStaff(s);
+  assert.deepEqual(fix.allowedProjects, ['P1', 'P3']);
+  assert.equal(fix.changed, true);
+});
+
+test('reconcileStaff: 擅长不在可胜任时自动并入（擅长必可做）', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1'],
+    preferredProjects: [{ projectId: 'P7', reason: '体力好' }],
+  });
+  const fix = reconcileStaff(s);
+  assert.deepEqual(fix.allowedProjects, ['P1', 'P7']);
+  assert.deepEqual(fix.preferredProjects, [{ projectId: 'P7', reason: '体力好' }]);
+  assert.equal(fix.changed, true);
+});
+
+test('reconcileStaff: 与不合适重叠的擅长条目剔除（黑名单优先）', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1'],
+    bannedProjects: [{ projectId: 'P8', reason: '高空作业不行' }],
+    preferredProjects: [
+      { projectId: 'P8', reason: '曾是高空能手' },
+      { projectId: 'P1', reason: '搬运熟手' },
+    ],
+  });
+  const fix = reconcileStaff(s);
+  assert.deepEqual(fix.preferredProjects, [{ projectId: 'P1', reason: '搬运熟手' }]);
+  assert.deepEqual(fix.allowedProjects, ['P1']);
+  assert.equal(fix.changed, true);
+});
+
+test('reconcileStaff: 干净数据 changed=false 原样保留', () => {
+  const s = createStaff({
+    name: '张三',
+    allowedProjects: ['P1', 'P2'],
+    preferredProjects: [{ projectId: 'P2', reason: '搬运熟手' }],
+    bannedProjects: [{ projectId: 'P9', reason: '腰伤' }],
+  });
+  const fix = reconcileStaff(s);
+  assert.deepEqual(fix.allowedProjects, ['P1', 'P2']);
+  assert.deepEqual(fix.preferredProjects, [{ projectId: 'P2', reason: '搬运熟手' }]);
+  assert.equal(fix.changed, false);
+});
+
 test('SLOT_LABELS 预置四时段标签', () => {
   assert.deepEqual(SLOT_LABELS, ['自主安排', '早', '中', '晚']);
 });
 
 test('DEFAULT_SETTINGS 默认值', () => {
   assert.deepEqual(DEFAULT_SETTINGS, {
-    dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2,
+    dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
     preferredBonus: 15, balanceFactor: 5,
+    defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
   });
 });
 

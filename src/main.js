@@ -22,7 +22,7 @@ const ICON_WARN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 const views = {
   calendar: { label: '排班周历', icon: ICON.calendar, render: renderCalendar },
-  config: { label: '基础配置', icon: ICON.gear, render: renderConfig },
+  config: { label: '数据配置', icon: ICON.gear, render: renderConfig },
   analysis: { label: '疲劳分析', icon: ICON.chart, render: renderAnalysis },
 };
 

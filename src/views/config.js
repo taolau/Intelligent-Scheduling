@@ -17,35 +17,44 @@ const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 15V3m0 0L7 8m5-5l5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
+
+const TAB_DEFS = [
+  { key: 'staff', label: '人员管理', render: renderStaffs },
+  { key: 'project', label: '任务管理', render: renderProjects },
+  { key: 'settings', label: '系统设置', render: renderSettings },
+];
 
 export function renderConfig(container) {
   const keepTab = document.querySelector('.seg button.active')?.textContent
-    ?? (localStorage.getItem(KEYS.configTab) === 'project' ? '任务管理' : '人员管理');
+    ?? (TAB_DEFS.find(t => t.key === localStorage.getItem(KEYS.configTab))?.label ?? '人员管理');
   container.innerHTML = '';
+  const frame = document.createElement('div');
+  frame.className = 'cfg-frame';
   const bar = document.createElement('div');
   bar.className = 'seg';
-  bar.style.marginBottom = '12px';
-  const tabStaff = document.createElement('button');
-  tabStaff.type = 'button';
-  tabStaff.textContent = '人员管理';
-  const tabProject = document.createElement('button');
-  tabProject.type = 'button';
-  tabProject.textContent = '任务管理';
-  bar.append(tabStaff, tabProject);
-  const settingsBtn = document.createElement('button');
-  settingsBtn.type = 'button';
-  settingsBtn.className = 'btn btn-default btn-sm';
-  settingsBtn.textContent = '设置';
-  settingsBtn.style.marginLeft = 'auto';
-  settingsBtn.onclick = () => settingsDialog();
-  bar.appendChild(settingsBtn);
-  container.appendChild(bar);
-  const body = document.createElement('div');
-  container.appendChild(body);
-  if (keepTab === '任务管理') { tabProject.classList.add('active'); renderProjects(body); }
-  else { tabStaff.classList.add('active'); renderStaffs(body); }
-  tabStaff.onclick = () => { setTab(tabStaff, tabProject); localStorage.setItem(KEYS.configTab, 'staff'); renderStaffs(body); };
-  tabProject.onclick = () => { setTab(tabProject, tabStaff); localStorage.setItem(KEYS.configTab, 'project'); renderProjects(body); };
+  const btns = TAB_DEFS.map(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t.label;
+    return b;
+  });
+  bar.append(...btns);
+  const head = document.createElement('div');
+  head.className = 'cfg-head';
+  const scroll = document.createElement('div');
+  scroll.className = 'cfg-scroll';
+  frame.append(bar, head, scroll);
+  container.appendChild(frame);
+  const activate = (i) => {
+    btns.forEach((b, j) => b.classList.toggle('active', j === i));
+    localStorage.setItem(KEYS.configTab, TAB_DEFS[i].key);
+    head.style.display = TAB_DEFS[i].key === 'settings' ? 'none' : '';
+    TAB_DEFS[i].render(head, scroll);
+  };
+  btns.forEach((b, i) => { b.onclick = () => activate(i); });
+  activate(Math.max(0, TAB_DEFS.findIndex(t => t.label === keepTab)));
 }
 
 function btn(text, active = false, icon = '') {
@@ -54,11 +63,6 @@ function btn(text, active = false, icon = '') {
   b.innerHTML = `${icon}<span>${text}</span>`;
   b.className = `btn btn-${active ? 'primary' : 'default'}`;
   return b;
-}
-
-function setTab(on, off) {
-  on.classList.add('active');
-  off.classList.remove('active');
 }
 
 // 值区 tag 超过 2 行时折叠：第 3 行起隐藏，追加「+N」chip；点击展开/收起
@@ -160,19 +164,20 @@ function activeBadge(on) {
     : '<span class="badge badge-muted"><span class="badge-dot"></span>停用</span>';
 }
 
-async function renderStaffs(body) {
-  body.innerHTML = '';
+async function renderStaffs(head, scroll) {
+  head.innerHTML = '';
+  scroll.innerHTML = '';
   const { staffs, projects } = getCache();
   const projName = new Map(projects.map(p => [p.id, p.name]));
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
+  actions.className = 'cfg-actions';
   actions.append(
     btn('新增人员', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD),
   );
   actions.children[0].onclick = () => editStaffDialog();
   actions.children[1].onclick = () => importDialog({ title: '导入人员', handler: importStaffs, template: downloadStaffTemplate });
   actions.children[2].onclick = () => exportStaffs();
-  body.appendChild(actions);
+  head.appendChild(actions);
 
   const grid = document.createElement('div');
   grid.className = 'card-grid';
@@ -231,13 +236,14 @@ async function renderStaffs(body) {
     card.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
     grid.appendChild(card);
   }
-  body.appendChild(grid);
+  scroll.appendChild(grid);
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
 }
 
 async function editStaffDialog(staff) {
-  const target = staff ?? createStaff({});
+  // 新建人员带入「设置」里的系统默认上限（仅默认值，编辑既有人员不受影响）
+  const target = staff ?? createStaff({}, getSettings());
   const { projects } = getCache();
   const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
   const body = document.createElement('div');
@@ -260,12 +266,18 @@ async function editStaffDialog(staff) {
   });
   const statusF = field({ label: '状态', control: statusSel });
 
+  // 三列表关系：可胜任 ∩ 不合适 = ∅、擅长 ⊆ 可胜任。
+  // 冲突不代改：操作冲突即时提示并回滚，由用户按顺序手动化解
+  // （先勾可胜任再设擅长/不合适；先删擅长再取消可胜任）。存量矛盾数据原样展示，保存时统一提示。
+  const pName = id => projects.find(p => p.id === id)?.name ?? id;
+
   const allowedSel = createSelect({
     multiple: true,
     placeholder: '请选择可胜任项目',
     options: projects.map((p) => ({ value: p.id, label: p.name })),
     value: target.allowedProjects,
   });
+  let lastAllowed = [...allowedSel.value];
   const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '可多选' });
 
   const preferredEditor = rowsEditor({
@@ -275,15 +287,65 @@ async function editStaffDialog(staff) {
       { key: 'reason', type: 'text', placeholder: '如：体力好，搬运熟练' },
     ],
     initial: target.preferredProjects,
+    onCell: (colKey, el) => {
+      if (colKey !== 'projectId') return;
+      el.addEventListener('change', () => {
+        const P = el.value;
+        if (!P) return;
+        if (bannedEditor.collect().some(r => r.projectId === P)) {
+          el.value = '';
+          showToast(`「${pName(P)}」在不合适项目中，请先删除该行再设为擅长`, 'error');
+          return;
+        }
+        if (!lastAllowed.includes(P)) {
+          el.value = '';
+          showToast(`「${pName(P)}」还没设为可胜任，请先勾选可胜任再设为擅长`, 'error');
+        }
+      });
+    },
   });
 
   const bannedEditor = rowsEditor({
-    label: '不合适项目（硬性过滤）', addLabel: '＋ 添加不合适项目',
+    label: '不合适项目', addLabel: '＋ 添加不合适项目',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：腰伤，不宜搬重物' },
     ],
     initial: target.bannedProjects,
+    onCell: (colKey, el) => {
+      if (colKey !== 'projectId') return;
+      el.addEventListener('change', () => {
+        const P = el.value;
+        if (!P) return;
+        if (preferredEditor.collect().some(r => r.projectId === P)) {
+          el.value = '';
+          showToast(`「${pName(P)}」是擅长项目，请先删除其擅长配置再设为不合适`, 'error');
+          return;
+        }
+        if (lastAllowed.includes(P)) {
+          el.value = '';
+          showToast(`「${pName(P)}」已在可胜任中，请先取消勾选再设为不合适`, 'error');
+        }
+      });
+    },
+  });
+
+  // 多选增删拦截：不能勾入不合适行中已有的项目、不能取消擅长项目
+  allowedSel.addEventListener('change', () => {
+    const nv = allowedSel.value;
+    const added = nv.filter(id => !lastAllowed.includes(id));
+    const removed = lastAllowed.filter(id => !nv.includes(id));
+    const bannedNow = new Set(bannedEditor.collect().map(r => r.projectId));
+    const prefNow = new Set(preferredEditor.collect().map(r => r.projectId));
+    const clashAdded = added.find(id => bannedNow.has(id));
+    const clashRemoved = removed.find(id => prefNow.has(id));
+    if (clashAdded || clashRemoved) {
+      allowedSel.value = lastAllowed;
+      if (clashAdded) showToast(`「${pName(clashAdded)}」在不合适项目中，请先删除该行再设为可胜任`, 'error');
+      else showToast(`「${pName(clashRemoved)}」是擅长项目，请先删除其擅长配置再取消可胜任`, 'error');
+      return;
+    }
+    lastAllowed = nv;
   });
 
   const fatigueInput = document.createElement('input');
@@ -300,7 +362,46 @@ async function editStaffDialog(staff) {
   heavyInput.value = target.maxHeavyTaskCount;
   const heavyF = field({ label: '高强度次数上限', control: heavyInput });
 
-  body.append(nameF.wrap, statusF.wrap, allowedF.wrap, preferredEditor.el, bannedEditor.el, fatigueF.wrap, heavyF.wrap);
+  const limitRow = document.createElement('div');
+  limitRow.style.cssText = 'display:flex;gap:10px;';
+  fatigueF.wrap.style.flex = '1';
+  heavyF.wrap.style.flex = '1';
+  limitRow.append(fatigueF.wrap, heavyF.wrap);
+  const allowedLab = allowedF.wrap.querySelector('label');
+  const fillBannedBtn = makeFillBtn('可胜任之外全部设为不合适', () => {
+    const allowed = new Set(allowedSel.value);
+    const existing = new Set(bannedEditor.collect().map(b => b.projectId));
+    const missing = projects.map(p => p.id).filter(id => !allowed.has(id) && !existing.has(id));
+    if (!missing.length) {
+      showToast('不合适项目已是最全状态', 'info');
+      return;
+    }
+    missing.forEach(id => bannedEditor.add({ projectId: id, reason: '' }));
+    showToast(`已追加 ${missing.length} 个不合适项目，可逐行补充原因`, 'success');
+  });
+  const allowedLabRow = document.createElement('div');
+  allowedLabRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  allowedLab.replaceWith(allowedLabRow);
+  allowedLabRow.append(allowedLab, fillBannedBtn);
+
+  const bannedLab = bannedEditor.el.querySelector('label');
+  const fillAllowedBtn = makeFillBtn('不合适之外全部设为可胜任', () => {
+    const banned = new Set(bannedEditor.collect().map(b => b.projectId));
+    const ids = projects.map(p => p.id).filter(id => !banned.has(id));
+    allowedSel.value = ids;
+    lastAllowed = ids;
+    showToast(`已设 ${ids.length} 个项目为可胜任`, 'success');
+  });
+  const bannedLabRow = document.createElement('div');
+  bannedLabRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  bannedLab.replaceWith(bannedLabRow);
+  bannedLabRow.append(bannedLab, fillAllowedBtn);
+
+  if (!projects.length) {
+    fillAllowedBtn.disabled = true;
+    fillBannedBtn.disabled = true;
+  }
+  body.append(nameF.wrap, statusF.wrap, limitRow, allowedF.wrap, bannedEditor.el, preferredEditor.el);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -322,6 +423,22 @@ async function editStaffDialog(staff) {
       maxWeeklyFatigue: Number(fatigueInput.value),
       maxHeavyTaskCount: Number(heavyInput.value),
     });
+    // 三列表关系预检（名称级提示）：矛盾不代改，列出后由用户按顺序化解
+    const relIssues = [];
+    for (const b of draft.bannedProjects) {
+      if (b.projectId && draft.allowedProjects.includes(b.projectId)) {
+        relIssues.push(`「${pName(b.projectId)}」同时在不合适与可胜任中，请取消其一`);
+      }
+    }
+    for (const p of draft.preferredProjects) {
+      if (p.projectId && !draft.allowedProjects.includes(p.projectId)) {
+        relIssues.push(`「${pName(p.projectId)}」设为擅长但不在可胜任中，请勾选可胜任或删除擅长`);
+      }
+    }
+    if (relIssues.length) {
+      showToast(`存在矛盾配置：${relIssues.join('；')}`, 'error');
+      return;
+    }
     const v = validateStaff(draft);
     if (!v.valid) {
       const byField = {};
@@ -329,6 +446,7 @@ async function editStaffDialog(staff) {
       setError(nameF, byField.name?.join('；') || '');
       setError(fatigueF, byField.maxWeeklyFatigue?.join('；') || '');
       setError(heavyF, byField.maxHeavyTaskCount?.join('；') || '');
+      setError(allowedF, byField.allowedProjects?.join('；') || '');
       if (byField.bannedProjects) showToast(byField.bannedProjects.join('；'), 'error');
       if (byField.preferredProjects) showToast(byField.preferredProjects.join('；'), 'error');
       return;
@@ -345,17 +463,29 @@ async function editStaffDialog(staff) {
   };
 }
 
-async function renderProjects(body) {
-  body.innerHTML = '';
+function makeFillBtn(title, onclick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'lbl-icon-btn';
+  b.title = title;
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M8 7h12M16 3l4 4-4 4M16 17H4M8 13l-4 4 4 4"/></svg>';
+  b.onclick = onclick;
+  return b;
+}
+
+async function renderProjects(head, scroll) {
+  head.innerHTML = '';
+  scroll.innerHTML = '';
   const { projects } = getCache();
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
+  actions.className = 'cfg-actions';
   actions.append(btn('新增任务', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD));
   actions.children[0].onclick = () => editProjectDialog();
   actions.children[1].onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
   actions.children[2].onclick = () => exportProjects();
-  body.appendChild(actions);
+  head.appendChild(actions);
 
+  const slotOrder = new Map(SLOT_LABELS.map((l, i) => [l, i]));
   const grid = document.createElement('div');
   grid.className = 'card-grid';
   if (!projects.length) {
@@ -364,7 +494,9 @@ async function renderProjects(body) {
   }
   for (const p of projects) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
-    const slots = p.slots.map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">—</span>';
+    const slots = [...p.slots]
+      .sort((a, b) => slotOrder.get(a.label) - slotOrder.get(b.label))
+      .map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">—</span>';
     const timeRange = p.timeRange
       ? `${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`
       : '<span class="empty">—</span>';
@@ -405,7 +537,7 @@ async function renderProjects(body) {
     card.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
     grid.appendChild(card);
   }
-  body.appendChild(grid);
+  scroll.appendChild(grid);
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
 }
@@ -455,13 +587,31 @@ async function editProjectDialog(project) {
   }
   const daysF = field({ label: '重复星期（全不勾 = 一次性任务）', control: daysWrap });
 
-  const slotEditor = rowsEditor({
-    label: '时段', addLabel: '＋ 添加时段',
-    cols: [
-      { key: 'slot', type: 'select', options: SLOT_LABELS },
-    ],
-    initial: target.slots.map(s => ({ slot: s.label })),
-  });
+  const slotWrap = document.createElement('div');
+  slotWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+  const slotChips = [];
+  for (const label of SLOT_LABELS) {
+    const lab = document.createElement('label');
+    lab.className = 'day-chip';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = label;
+    cb.checked = target.slots.some(s => s.label === label);
+    lab.classList.toggle('on', cb.checked);
+    cb.onchange = () => {
+      if (!cb.checked && !slotChips.some(c => c.checked)) {
+        cb.checked = true;
+        lab.classList.add('on');
+        showToast('至少保留一个时段', 'error');
+        return;
+      }
+      lab.classList.toggle('on', cb.checked);
+    };
+    slotChips.push(cb);
+    lab.append(cb, document.createTextNode(label));
+    slotWrap.appendChild(lab);
+  }
+  const slotsF = field({ label: '时段（至少一个）', control: slotWrap });
 
   const timeStart = createTimePicker({ value: target.timeRange?.start ?? '' });
   const timeEnd = createTimePicker({ value: target.timeRange?.end ?? '' });
@@ -495,7 +645,12 @@ async function editProjectDialog(project) {
   descInput.placeholder = '任务情况、注意事项等（选填）';
   const descF = field({ label: '任务说明', control: descInput });
 
-  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, timeF.wrap, descF.wrap, activeF.wrap);
+  const fatigueCapRow = document.createElement('div');
+  fatigueCapRow.style.cssText = 'display:flex;gap:10px;';
+  fatigueF.wrap.style.flex = '1';
+  capF.wrap.style.flex = '1';
+  fatigueCapRow.append(fatigueF.wrap, capF.wrap);
+  body.append(nameF.wrap, activeF.wrap, fatigueCapRow, daysF.wrap, slotsF.wrap, timeF.wrap, descF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -519,7 +674,7 @@ async function editProjectDialog(project) {
       fatigueScore: Number(fatigueSel.value),
       requiredCapacity: Number(capInput.value),
       weekDays: dayChecks.filter(c => c.checked).map(c => Number(c.value)),
-      slots: dedupeSlots(slotEditor.collect().map(r => ({ label: r.slot }))),
+      slots: slotChips.filter(c => c.checked).map(c => ({ label: c.value })),
       active: activeSel.value === 'true',
       timeRange: start && end ? { start, end } : null,
       description: descInput.value.trim(),
@@ -582,58 +737,227 @@ function importDialog({ title, handler, template }) {
   };
 }
 
-function dedupeSlots(slots) {
-  const seen = new Set();
-  return slots.filter(s => { if (seen.has(s.label)) return false; seen.add(s.label); return true; });
-}
+// ===== 系统设置 tab =====
+const SET_GROUPS = [
+  {
+    title: '班次数量上限',
+    desc: '防止一人一天或同一时段被排太多班、连轴转。属硬性限制：达到上限后系统拒绝再排，并给出原因。',
+    items: [
+      { key: 'dailyTaskLimit', name: '一人一天最多任务数', min: 1,
+        hint: '一个人一天最多参与几个班次。当天已达上限时，再排会被拒绝并提示原因。' },
+      { key: 'slotTaskLimit', name: '一人一时段最多任务数', min: 1,
+        hint: '早 / 中 / 晚 / 自主安排四个时段各自计数：同一时段最多排 N 个任务，不同时段互不挤占（如可同时接 1 个早班 + 1 个自主安排，再接 1 个自主安排就会超限）。' },
+      { key: 'warnDailyCount', name: '当天任务数预警阈值', min: 1,
+        hint: '当天班次数达到该值时：再安排此人会提示「已达预警阈值」、人员 chip 变黄。只提醒，不阻止。' },
+    ],
+  },
+  {
+    title: '推荐打分',
+    desc: '「智能排班」「一键替补」选人时按分数推荐，谁得分高谁优先。',
+    items: [
+      { key: 'preferredBonus', name: '擅长加分', min: 1,
+        hint: '命中此人所擅长项目时加的分（擅长名单带原因，在人员编辑弹窗维护）。分值越大，越优先用熟练的人。' },
+      { key: 'balanceFactor', name: '均衡系数', min: 1,
+        hint: '均衡加分 = (团队平均周疲劳 − 本人本周疲劳) × 系数，可为负。系数越大越优先排本周干得少的人；越小越偏向熟手优先。' },
+    ],
+  },
+  {
+    title: '新建人员默认',
+    desc: '仅作用于之后新建的人员（含 Excel 导入缺省）；已有人员不受影响。',
+    items: [
+      { key: 'defaultWeeklyFatigue', name: '周疲劳上限', min: 1,
+        hint: '新人的单周劳累积分上限（防透支）。本周劳累积分 = 本周已排班次的劳累指数之和。' },
+      { key: 'defaultHeavyTaskCount', name: '高强度次数上限', min: 0,
+        hint: '新人一周最多接几个劳累指数 3（高强度）班次；填 0 = 完全不安排高强度。' },
+    ],
+  },
+];
 
-function settingsDialog() {
+const RULE_SECS = [
+  {
+    h: '谁能被排：一票否决',
+    note: '被拒提示区分现状措辞：已超限 / 已达上限 / 将超限。',
+    items: [
+      '不合适名单：任务在该人「不合适」中（录入带原因，如「腰伤，不宜搬重物」）',
+      '权限不足：任务不在该人「可胜任」名单中',
+      '状态不符：休假中 / 已退出永不参与（退出仅保留历史）',
+      '新入保护：新加入者不排高强度（劳累指数 3），转正后解除',
+      '超限：当天班次数、同一时段、本周劳累积分或高强度次数将超过个人上限',
+    ],
+  },
+  {
+    h: '推荐给谁：打分排序',
+    formula: '总分 = 擅长加分 + (团队平均周疲劳 − 本人本周疲劳) × 均衡系数',
+    items: [
+      '低于平均得正分 → 优先排（干得少的先上）；高于平均得负分 → 往后排（干得多的先歇）',
+      '团队平均只统计参与状态人员；新入按平均计（不加不减），休假 / 已退出不计入',
+      '每分配一人立即刷新其本周疲劳，后续班次实时感知——避免同一人反复填坑',
+    ],
+  },
+  {
+    h: '疲劳与高强度怎么累计',
+    items: [
+      '劳累指数 = 任务自带的辛苦分：1 轻松 / 2 中等 / 3 高强度',
+      '本周劳累积分 = 本周（周一 ~ 周日）已排班次的劳累指数之和，超过个人「周疲劳上限」即超限',
+      '高强度次数 = 本周排过的 3 分班次数，受个人「高强度次数上限」约束',
+    ],
+  },
+  {
+    h: '预警亮灯时机',
+    items: [
+      '当天班次数达到「当天任务数预警阈值」时：再安排此人会弹出提示、人员 chip 变黄——只提醒，不阻止',
+    ],
+  },
+];
+
+function renderSettings(head, scroll) {
   const s = getSettings();
-  const row = (label, input) => {
-    const r = document.createElement('div');
-    r.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:8px;';
-    r.appendChild(document.createTextNode(label));
-    r.appendChild(input);
-    return r;
+  head.innerHTML = '';
+  scroll.innerHTML = '';
+  const split = document.createElement('div');
+  split.className = 'cfg-split';
+
+  // —— 左面板：系统参数（配置 + 按钮 + 自带滚动） ——
+  const paneL = document.createElement('section');
+  paneL.className = 'card set-pane';
+  const headL = document.createElement('header');
+  headL.className = 'set-pane-head';
+  const topL = document.createElement('div');
+  topL.className = 'set-pane-top';
+  const icoL = document.createElement('span');
+  icoL.className = 'set-pane-ico';
+  icoL.innerHTML = ICON_GEAR;
+  const titleL = document.createElement('div');
+  titleL.className = 'set-pane-title';
+  titleL.textContent = '系统参数';
+  topL.append(icoL, titleL);
+  const subL = document.createElement('div');
+  subL.className = 'set-pane-sub';
+  subL.textContent = '所有改动在点击「保存」后统一生效；「新建人员默认」不影响已有人员与班次。';
+  headL.append(topL, subL);
+  const bodyL = document.createElement('div');
+  bodyL.className = 'set-pane-body set-groups';
+  const inputs = {};
+  for (const g of SET_GROUPS) {
+    const group = document.createElement('div');
+    group.className = 'set-group';
+    const hd = document.createElement('div');
+    hd.className = 'set-group-head';
+    const h = document.createElement('div');
+    h.className = 'set-group-title';
+    h.textContent = g.title;
+    const d = document.createElement('div');
+    d.className = 'set-group-desc';
+    d.textContent = g.desc;
+    hd.append(h, d);
+    const ps = document.createElement('div');
+    ps.className = 'set-params';
+    g.items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'set-param';
+      const main = document.createElement('div');
+      main.className = 'set-param-main';
+      const nm = document.createElement('span');
+      nm.className = 'set-param-name';
+      nm.textContent = it.name;
+      const input = document.createElement('input');
+      input.className = 'input set-num';
+      input.type = 'number';
+      input.min = it.min;
+      input.value = s[it.key];
+      inputs[it.key] = input;
+      main.append(nm, input);
+      const hint = document.createElement('div');
+      hint.className = 'set-param-hint';
+      hint.textContent = it.hint;
+      row.append(main, hint);
+      ps.appendChild(row);
+    });
+    group.append(hd, ps);
+    bodyL.appendChild(group);
+  }
+  const opsL = document.createElement('div');
+  opsL.className = 'set-pane-ops';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'btn btn-default btn-sm';
+  resetBtn.textContent = '恢复默认';
+  resetBtn.onclick = () => {
+    SET_GROUPS.flatMap(g => g.items).forEach(it => { inputs[it.key].value = DEFAULT_SETTINGS[it.key]; });
+    showToast('已填入系统默认值，点击「保存」后生效', 'info');
   };
-  const num = (v) => {
-    const i = document.createElement('input');
-    i.className = 'input';
-    i.type = 'number';
-    i.min = 1;
-    i.value = v;
-    i.style.maxWidth = '80px';
-    return i;
-  };
-  const dailyInput = num(s.dailyTaskLimit);
-  const slotInput = num(s.slotTaskLimit);
-  const warnInput = num(s.warnDailyCount);
-  const bonusInput = num(s.preferredBonus);
-  const factorInput = num(s.balanceFactor);
-  const hint = document.createElement('p');
-  hint.style.cssText = 'margin-bottom:12px;color:#6a6178;font-size:13px;line-height:1.6;';
-  hint.textContent = '任务数上限：一人当天或同一时段的班次数达到上限即禁止再排；接近上限时预警。擅长加分：命中擅长项目时加的分，越大越优先用熟练的人。均衡系数：按「团队平均疲劳 − 本人疲劳」放大差距的倍数，越大越优先排本周干得少的人（劳逸均衡）。';
-  const body = document.createElement('div');
-  body.append(hint,
-    row('一人一天最多任务数', dailyInput), row('一人一时段最多任务数', slotInput),
-    row('当天任务数达多少预警', warnInput), row('擅长加分（默认 15）', bonusInput),
-    row('均衡系数（默认 5）', factorInput));
-  const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
-  saveBtn.className = 'btn btn-primary';
+  saveBtn.className = 'btn btn-soft btn-sm';
   saveBtn.textContent = '保存';
-  footer.appendChild(saveBtn);
-  const modal = openModal({ title: '排班设置', body, footer });
   saveBtn.onclick = () => {
-    saveSettings({
-      dailyTaskLimit: Math.max(1, Number(dailyInput.value) || 1),
-      slotTaskLimit: Math.max(1, Number(slotInput.value) || 1),
-      warnDailyCount: Math.max(1, Number(warnInput.value) || 1),
-      preferredBonus: Math.max(1, Number(bonusInput.value) || DEFAULT_SETTINGS.preferredBonus),
-      balanceFactor: Math.max(1, Number(factorInput.value) || DEFAULT_SETTINGS.balanceFactor),
+    const draft = {};
+    SET_GROUPS.flatMap(g => g.items).forEach(it => {
+      const n = Number(inputs[it.key].value);
+      draft[it.key] = inputs[it.key].value.trim() !== '' && Number.isFinite(n)
+        ? Math.max(it.min, n)
+        : DEFAULT_SETTINGS[it.key];
     });
-    modal.close();
+    saveSettings(draft);
     showToast('设置已保存', 'success');
+    renderSettings(head, scroll);
   };
+  opsL.append(resetBtn, saveBtn);
+  topL.appendChild(opsL);
+  paneL.append(headL, bodyL);
+
+  // —— 右面板：系统怎么算（说明展示 + 自带滚动） ——
+  const paneR = document.createElement('section');
+  paneR.className = 'card set-pane';
+  const headR = document.createElement('header');
+  headR.className = 'set-pane-head';
+  const topR = document.createElement('div');
+  topR.className = 'set-pane-top';
+  const icoR = document.createElement('span');
+  icoR.className = 'set-pane-ico';
+  icoR.innerHTML = ICON_QUESTION;
+  const titleR = document.createElement('div');
+  titleR.className = 'set-pane-title';
+  titleR.textContent = '系统怎么算';
+  topR.append(icoR, titleR);
+  const subR = document.createElement('div');
+  subR.className = 'set-pane-sub';
+  subR.textContent = '以下规则作用于所有排班入口：智能排班、一键替补、拖拽换人、手动分配。';
+  headR.append(topR, subR);
+  const bodyR = document.createElement('div');
+  bodyR.className = 'set-pane-body';
+  RULE_SECS.forEach((sec, i) => {
+    const box = document.createElement('div');
+    box.className = 'set-rule-sec';
+    const hh = document.createElement('h4');
+    const idx = document.createElement('span');
+    idx.className = 'set-rule-idx';
+    idx.textContent = i + 1;
+    hh.append(idx, document.createTextNode(sec.h));
+    box.appendChild(hh);
+    if (sec.formula) {
+      const fm = document.createElement('div');
+      fm.className = 'set-rule-formula';
+      fm.textContent = sec.formula;
+      box.appendChild(fm);
+    }
+    const ul = document.createElement('ul');
+    sec.items.forEach(t => {
+      const li = document.createElement('li');
+      li.textContent = t;
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    if (sec.note) {
+      const nt = document.createElement('div');
+      nt.className = 'set-rule-note';
+      nt.textContent = sec.note;
+      box.appendChild(nt);
+    }
+    bodyR.appendChild(box);
+  });
+  paneR.append(headR, bodyR);
+
+  split.append(paneL, paneR);
+  scroll.appendChild(split);
 }

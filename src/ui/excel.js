@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
-import { createProject, createStaff, isValidTimeRange, SLOT_LABELS } from '../data/model.js';
-import { getCache, saveProject, saveStaff } from '../data/store.js';
+import { createProject, createStaff, isValidTimeRange, reconcileStaff, SLOT_LABELS } from '../data/model.js';
+import { getCache, saveProject, saveStaff, getSettings } from '../data/store.js';
 import { getWeekDates } from '../core/week.js';
 
 // 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）无 ID 列；导出（存档/迁移）保留 ID 保证引用关系，导入两种均兼容。
@@ -21,15 +21,15 @@ const STAFF_BASE_COLS = [
   '可胜任项目(必填;分号隔开)',
   '擅长项目(选填;项目(原因),分号隔开)',
   '不合适项目(选填;项目(原因),分号隔开)',
-  '周疲劳上限(选填;默认6)',
-  '高强度次数上限(选填;默认1)',
+  '周疲劳上限(选填)',
+  '高强度次数上限(选填)',
 ];
 const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
 const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
 const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '1'];
-const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '6', '1'];
+const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
 const STATUS_REV = { new: '新入', active: '活跃', rest: '休假', left: '已退出' };
@@ -161,8 +161,10 @@ const STAFF_KEY_ALIAS = {
   '可胜任项目(分号隔开)': '可胜任项目(必填;分号隔开)',
   '擅长项目(项目(原因);分号隔开)': '擅长项目(选填;项目(原因),分号隔开)',
   '不合适项目(项目(原因);分号隔开)': '不合适项目(选填;项目(原因),分号隔开)',
-  '周疲劳上限(默认6)': '周疲劳上限(选填;默认6)',
-  '高强度次数上限(默认1)': '高强度次数上限(选填;默认1)',
+  '周疲劳上限(默认6)': '周疲劳上限(选填)',
+  '周疲劳上限(选填;默认6)': '周疲劳上限(选填)',
+  '高强度次数上限(默认1)': '高强度次数上限(选填)',
+  '高强度次数上限(选填;默认1)': '高强度次数上限(选填)',
 };
 const normalizeKeys = alias => raw => {
   const r = {};
@@ -215,12 +217,16 @@ export async function importStaffs(file) {
     const projectIds = new Set(projects.map(p => p.id));
     const byName = new Map(staffs.map(s => [s.name.trim(), s]));
     const byId = new Map(staffs.map(s => [s.id, s]));
-    let added = 0, updated = 0, skipped = 0;
+    let added = 0, updated = 0, skipped = 0, reconciled = 0;
+    const settings = getSettings();
     for (const r of rows) {
       if (String(r['姓名(必填)'] ?? '').startsWith('【示例】')) continue;
       const name = String(r['姓名(必填)'] ?? '').trim();
       if (!name) { skipped++; continue; }
       const status = normalizeStatus(r['状态(选填;新入/活跃/休假/已退出,默认活跃)']);
+      // 上限列留空 → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
+      const weeklyN = Number(r['周疲劳上限(选填)']);
+      const heavyN = Number(r['高强度次数上限(选填)']);
       const fields = {
         name,
         status,
@@ -228,9 +234,14 @@ export async function importStaffs(file) {
         allowedProjects: parseList(r['可胜任项目(必填;分号隔开)']).filter(id => projectIds.has(id)),
         preferredProjects: parsePref(r['擅长项目(选填;项目(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
         bannedProjects: parsePref(r['不合适项目(选填;项目(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
-        maxWeeklyFatigue: Number(r['周疲劳上限(选填;默认6)']) || 6,
-        maxHeavyTaskCount: Number(r['高强度次数上限(选填;默认1)']) || 1,
+        maxWeeklyFatigue: Number.isFinite(weeklyN) ? weeklyN : settings.defaultWeeklyFatigue,
+        maxHeavyTaskCount: Number.isFinite(heavyN) ? heavyN : settings.defaultHeavyTaskCount,
       };
+      // 三列表关系收敛：可胜任剔除与不合适重叠项、擅长自动并入可胜任、与不合适重叠的擅长剔除（不合适优先）
+      const fix = reconcileStaff(fields);
+      if (fix.changed) reconciled++;
+      fields.allowedProjects = fix.allowedProjects;
+      fields.preferredProjects = fix.preferredProjects;
       // 同名或同 ID 覆盖（保留原 ID 与 joinedAt），否则新增；文件内多行同名后者覆盖前者
       const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
       const rec = existing
@@ -240,7 +251,8 @@ export async function importStaffs(file) {
       byName.set(name, rec);
       existing ? updated++ : added++;
     }
-    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}` };
+    const fixNote = reconciled ? `（${reconciled} 名含矛盾配置，已按不合适优先自动修正）` : '';
+    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}` };
   } catch (e) {
     return { ok: false, message: `人员导入失败：${e.message}` };
   }

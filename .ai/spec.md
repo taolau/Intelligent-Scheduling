@@ -47,7 +47,7 @@ Intelligent-Scheduling/
       substitute.js       #   替补 Top3 推荐
     views/                # 视图层
       calendar.js         #   周历网格视图（排班主界面）；替换弹窗（openReplaceDialog）
-      config.js           #   基础配置页（人员/任务表）
+      config.js           #   数据配置页（人员/任务表）
       analysis.js         #   疲劳分析（柱状图）
     ui/                   # 通用 UI 组件
       modal.js            #   弹窗通用组件（openModal）
@@ -86,8 +86,8 @@ Intelligent-Scheduling/
 | `allowedProjects` | Array | 可胜任项目 ID 列表 | `["P101","P102"]` |
 | `preferredProjects` | Array | **擅长项目列表（带原因）** | `[{projectId:"P101", reason:"体力好，搬运熟练"}]` |
 | `bannedProjects` | Array | **禁忌项目列表（带原因，硬性过滤）** | `[{projectId:"P103", reason:"腰伤，不宜搬重物"}]` |
-| `maxWeeklyFatigue` | Number | 单周劳累积分上限（防透支） | `6` |
-| `maxHeavyTaskCount` | Number | 单周高强度（3分）次数上限 | `1` |
+| `maxWeeklyFatigue` | Number | 单周劳累积分上限（防透支；新人员默认 10，见 6） | `10` |
+| `maxHeavyTaskCount` | Number | 单周高强度（3分）次数上限（新人员默认 2，见 6） | `2` |
 | `status` | String | 人员状态机（见 3.3） | `"active"` |
 | `joinedAt` | Number | 加入时间戳（ms），配置页卡片排序依据（新加入在前，已退出殿后） | `1785000000000` |
 | `restFrom` | String/null | 休假前状态（`"new"`/`"active"`），开关恢复参与时还原；非休假状态为 `null` | `"active"` |
@@ -169,7 +169,7 @@ $$Score = 擅长加分 + 均衡加分$$
 ```
 领导点击"智能排班"按钮（手动触发，不自动）：
 1. 取当前周视图内所有**未满员**班次（`staffIds.length < requiredCapacity`），缺几个补几个。
-2. 排序：先按日期，同一天固定时段（早/中/晚）优先、自主安排最后（自主安排不占时段，留到软约束捡漏）。
+2. 排序：先按日期，同一天固定时段（早/中/晚）优先、自主安排最后（自主安排不占早/中/晚的时段名额，留到软约束捡漏；四时段名额各自独立计数，见 4.2 第 4 条）。
 3. 逐个班次：硬性过滤 → 打分 → 分配得分最高者 → 立即更新该人周积分 → 下一班次。
    （逐个更新周积分，保证后续班次的均衡加分感知前面分配。）
 ```
@@ -197,14 +197,16 @@ $$Score = 擅长加分 + 均衡加分$$
 ## 5. 功能模块与 UI 交互
 
 ```
-[基础配置页] ➔ [周历网格看板] ➔ [智能排班/拖拽调整] ➔ [替换弹窗] ➔ [疲劳分析/导出]
+[数据配置页] ➔ [周历网格看板] ➔ [智能排班/拖拽调整] ➔ [替换弹窗] ➔ [疲劳分析/导出]
 ```
 
-### 5.1 基础配置页（config）
+### 5.1 数据配置页（config）
 - 人员/任务均以**卡片网格**呈现（响应式多列，非表格）：头部=名称+状态徽标，字段行标签化，底部操作区=开关+编辑。
 - 人员卡片：**参与/休假开关**（关=休假 `rest` 并记录 `restFrom`，开=恢复原状态；`new` 休假恢复仍是 `new`），退出/转正在编辑弹窗的状态下拉处理；排序=已退出殿后、其余按 `joinedAt` 倒序（新加入在前）。
 - 任务卡片：**启用/停用开关**即时切换 `active`。
-- 编辑弹窗（卡片「编辑」按钮）：编辑全部字段，含 `preferredProjects`/`bannedProjects` 的**原因录入**、`status` 状态管理（新入/活跃/休假/退出）。工具栏含「设置」弹窗（改数量上限与预警阈值）。
+- 编辑弹窗（卡片「编辑」按钮）：编辑全部字段，含 `preferredProjects`/`bannedProjects` 的**原因录入**、`status` 状态管理（新入/活跃/休假/退出）。
+- 顶部分段 tab 三个：人员管理 / 任务管理 / **系统设置**（`config_tab` 记忆 `staff`/`project`/`settings`，刷新停留）。
+- **系统设置 tab**：分组参数卡（班次数量上限 / 推荐打分 / 新建人员默认），每参数一行 = 名称 + 数字输入框 + 行内说明（含义与生效规则）；页底「系统怎么算」规则区（一票否决清单 / 打分公式 / 疲劳累计 / 预警时机，措辞同 docs/score-rules.md）。改动**暂存**，页尾「恢复默认」（只回填输入框不落盘）+「保存」（钳制 min、空值回系统默认后统一落盘，toast 提示）生效。
 - Excel 模板导入 / 导出（人员、任务）。
 - 一键导出全部数据为 JSON 备份。
 
@@ -241,8 +243,10 @@ $$Score = 擅长加分 + 均衡加分$$
 | --- | --- | --- |
 | `dailyTaskLimit` | `2` | 一人一天任务数上限（达上限 +1 硬性拒绝） |
 | `slotTaskLimit` | `1` | 一人一时段任务数上限（达上限 +1 硬性拒绝） |
-| `warnDailyCount` | `2` | 预警阈值：当天任务数达该值 chip 变黄 + 排班 toast 提醒 |
+| `warnDailyCount` | `1` | 预警阈值：当天任务数达该值 chip 变黄 + 排班 toast 提醒 |
 | `preferredBonus` | `15` | 擅长加分 |
 | `balanceFactor` | `5` | 均衡加分系数 |
 | `heavyFatigueThreshold` | `3` | 高强度判定阈值 |
+| `defaultWeeklyFatigue` | `10` | 新人员默认周疲劳上限（设置可改；仅作用于新建人员与导入缺省，不改已有人） |
+| `defaultHeavyTaskCount` | `2` | 新人员默认高强度次数上限（同上；0 = 禁排高强度） |
 

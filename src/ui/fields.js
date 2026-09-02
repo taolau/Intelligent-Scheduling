@@ -30,7 +30,7 @@ export function setError(entry, msg) {
   }
 }
 
-export function rowsEditor({ label, addLabel, cols, initial = [] }) {
+export function rowsEditor({ label, addLabel, cols, initial = [], onCell }) {
   const box = document.createElement('div');
   box.className = 'field';
   const lab = document.createElement('label');
@@ -60,6 +60,7 @@ export function rowsEditor({ label, addLabel, cols, initial = [] }) {
       }
       el.style.flex = '1';
       row.appendChild(el);
+      if (onCell) onCell(col.key, el, row);
     }
     const del = document.createElement('button');
     del.type = 'button';
@@ -75,6 +76,9 @@ export function rowsEditor({ label, addLabel, cols, initial = [] }) {
 
   return {
     el: box,
+    add(data) {
+      rows.appendChild(buildRow(data));
+    },
     collect() {
       const out = [];
       for (const row of rows.children) {
