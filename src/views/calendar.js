@@ -6,12 +6,13 @@ import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayL
 import { getCache, saveSchedule, getSettings, removeSchedule } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { createSchedule, SLOT_LABELS } from '../data/model.js';
-import { openModal } from '../ui/modal.js';
+import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
 import { exportAttendance } from '../ui/excel.js';
 import { exportWeekImage } from '../ui/exportImage.js';
 import { createSelect } from '../ui/select.js';
+import { field, setError } from '../ui/fields.js';
 import { ICON_FIRE } from '../ui/icons.js';
 
 let currentWeekStart = getWeekStart(todayStr());
@@ -349,24 +350,28 @@ function renderScheduleCard(sch, readOnly = false) {
   }
   card.appendChild(names);
 
-  const cap = document.createElement('div');
-  cap.className = `sch-capacity${filled >= capacity ? ' ok' : ''}`;
-  cap.textContent = filled >= capacity ? '已满' : (filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`);
-  if (!readOnly && filled < capacity) {
-    // 底部一行：需/缺 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
-    // 条件与 fillSchedule 对齐：未满员即逐名额填充，非仅空班次（原 filled===0，手动加 1 人后闪电消失）
-    const row = document.createElement('div');
-    row.className = 'sch-cap-row';
-    const smart = document.createElement('button');
-    smart.type = 'button';
-    smart.className = 'sch-smart';
-    smart.innerHTML = ICON_ZAP;
-    smart.title = '智能排班：为本班次自动填充人员';
-    smart.onclick = (e) => { e.stopPropagation(); smartFillOne(sch); };
-    row.append(cap, smart);
-    card.appendChild(row);
+  if (filled >= capacity) {
+    // 满员：底部不展示「已满」，卡片 .full 绿框视觉已表达
   } else {
-    card.appendChild(cap);
+    const cap = document.createElement('div');
+    cap.className = 'sch-capacity';
+    cap.textContent = filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`;
+    if (!readOnly) {
+      // 底部一行：需/缺 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
+      // 条件与 fillSchedule 对齐：未满员即逐名额填充，非仅空班次（原 filled===0，手动加 1 人后闪电消失）
+      const row = document.createElement('div');
+      row.className = 'sch-cap-row';
+      const smart = document.createElement('button');
+      smart.type = 'button';
+      smart.className = 'sch-smart';
+      smart.innerHTML = ICON_ZAP;
+      smart.title = '智能排班：为本班次自动填充人员';
+      smart.onclick = (e) => { e.stopPropagation(); smartFillOne(sch); };
+      row.append(cap, smart);
+      card.appendChild(row);
+    } else {
+      card.appendChild(cap);
+    }
   }
   return card;
 }
@@ -380,24 +385,14 @@ function scheduleDialog(sch) {
   const delBtn = document.createElement('button');
   delBtn.type = 'button';
   delBtn.className = 'btn btn-danger';
-  delBtn.style.marginRight = 'auto';
   delBtn.textContent = '删除班次';
   delBtn.title = '删除该班次，已排人员计数自动回退';
-  let confirmTimer = null;
   delBtn.onclick = () => {
-    if (delBtn.textContent !== '确认删除？') {
-      delBtn.textContent = '确认删除？';
-      delBtn.classList.add('confirming');
-      confirmTimer = setTimeout(() => {
-        delBtn.textContent = '删除班次';
-        delBtn.classList.remove('confirming');
-      }, 3000);
-      return;
-    }
-    clearTimeout(confirmTimer);
-    delBtn.disabled = true;
-    delBtn.textContent = '删除中…';
-    deleteSchedule();
+    confirmDialog({
+      title: '删除班次',
+      message: '确认删除该班次？已排人员将从当天任务数与本周疲劳计数中回退。',
+      onConfirm: async () => { delBtn.disabled = true; await deleteSchedule(); },
+    });
   };
   footer.appendChild(delBtn);
   const modal = openModal({ title: '排班分配', body, footer });
@@ -488,12 +483,13 @@ function scheduleDialog(sch) {
     listSec.textContent = '可选人员';
     const list = document.createElement('div');
     if (full) {
+      // 满员：仅显示提示，不渲染候选行（无「＋ 添加」入口）；移除一人后 renderBody 重算即恢复
       const done = document.createElement('div');
       done.className = 'asg-full';
       done.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M20 6L9 17l-5-5"/></svg>本班次已满员';
       list.appendChild(done);
-    }
-    for (const s of data.staffs) {
+    } else {
+      for (const s of data.staffs) {
       if (sch.staffIds.includes(s.id)) continue;
       const res = filterCandidate(s, sch, projectById, ctx);
       const row = document.createElement('div');
@@ -543,6 +539,7 @@ function scheduleDialog(sch) {
         };
       }
       list.appendChild(row);
+      }
     }
     body.append(head, progress, filledSec, chips, listSec, list);
   }
@@ -862,50 +859,81 @@ function openReplaceDialog(staff, sch) {
 function manualCreate(date, slotLabel, presetProjectId) {
   const body = document.createElement('div');
 
-  const dateRow = document.createElement('div');
-  dateRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
-  dateRow.appendChild(document.createTextNode('日期'));
   const dateInput = document.createElement('input');
   dateInput.className = 'input';
   dateInput.type = 'date';
-  dateInput.dataset.k = 'date';
   dateInput.value = date ?? currentWeekStart;
-  dateRow.appendChild(dateInput);
+  const dateF = field({ label: '日期', required: true, control: dateInput });
+  // hint 实时回显星期，核对所选日期（field 未传 hint 不创建元素，手动插入 err 之前）
+  const dateHint = document.createElement('div');
+  dateHint.className = 'hint';
+  dateF.wrap.insertBefore(dateHint, dateF.err);
+  const syncDateHint = () => { dateHint.textContent = dateInput.value ? weekdayLabel(dateInput.value) : ''; };
+  syncDateHint();
+  dateInput.addEventListener('change', syncDateHint);
 
-  const slotRow = document.createElement('div');
-  slotRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
-  slotRow.appendChild(document.createTextNode('时段'));
-  const slotSel = createSelect({ options: SLOT_LABELS, value: slotLabel ?? SLOT_LABELS[0] });
-  slotSel.dataset.k = 'slot';
-  slotRow.appendChild(slotSel);
+  // 时段：四 chip 单选点选（与配置页时段 chip 同构）
+  const slotWrap = document.createElement('div');
+  slotWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+  let slotValue = slotLabel ?? SLOT_LABELS[0];
+  for (const label of SLOT_LABELS) {
+    const lab = document.createElement('label');
+    lab.className = 'day-chip';
+    const rb = document.createElement('input');
+    rb.type = 'radio';
+    rb.name = 'mc-slot';
+    rb.value = label;
+    rb.checked = label === slotValue;
+    lab.classList.toggle('on', rb.checked);
+    rb.onchange = () => {
+      slotValue = label;
+      slotWrap.querySelectorAll('.day-chip').forEach(c => c.classList.toggle('on', c.querySelector('input').checked));
+    };
+    lab.append(rb, document.createTextNode(label));
+    slotWrap.appendChild(lab);
+  }
+  const slotF = field({ label: '时段', required: true, control: slotWrap });
 
-  const projRow = document.createElement('div');
-  projRow.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px;';
-  projRow.appendChild(document.createTextNode('任务'));
+  // 任务：可搜索下拉；无任务时引导先去配置页
+  const noProjects = data.projects.length === 0;
   const projSel = createSelect({
     options: data.projects.map((p) => ({ value: p.id, label: p.name })),
     value: presetProjectId || data.projects[0]?.id || '',
     placeholder: '请选择任务',
+    searchable: true,
   });
-  projSel.dataset.k = 'project';
-  projRow.appendChild(projSel);
+  const projF = field({
+    label: '任务',
+    required: true,
+    control: projSel,
+    hint: noProjects ? '暂无任务，请先到「数据配置」页添加任务' : '',
+  });
 
-  body.append(dateRow, slotRow, projRow);
+  body.append(dateF.wrap, slotF.wrap, projF.wrap);
+
   const footer = document.createElement('div');
   const okBtn = document.createElement('button');
   okBtn.type = 'button';
   okBtn.className = 'btn btn-primary';
   okBtn.textContent = '创建';
+  if (noProjects) okBtn.disabled = true;
   footer.appendChild(okBtn);
   const modal = openModal({ title: '手动建班次', body, footer });
   okBtn.onclick = async () => {
-    const sch = createSchedule({
-      date: body.querySelector('[data-k="date"]').value,
-      slotLabel: body.querySelector('[data-k="slot"]').value,
-      projectId: body.querySelector('[data-k="project"]').value,
-    });
+    const dateVal = dateInput.value;
+    const projectId = projSel.value;
+    let valid = true;
+    if (!dateVal) { setError(dateF, '请选择日期'); valid = false; } else setError(dateF, '');
+    if (!projectId) { setError(projF, '请选择任务'); valid = false; } else setError(projF, '');
+    if (!valid) return;
+    const sch = createSchedule({ date: dateVal, slotLabel: slotValue, projectId });
     await saveSchedule(sch);
     modal.close();
+    const project = data.projects.find(p => p.id === projectId);
+    showToast(`已创建班次：${weekdayLabel(dateVal)} ${dateVal.slice(5)} · ${slotValue} · ${project?.name ?? projectId}`, 'success');
+    // 目标周不在当前浏览周时跟随跳转，创建即所见
+    const weekOf = getWeekStart(dateVal);
+    if (weekOf !== currentWeekStart) currentWeekStart = weekOf;
     renderCalendar(document.querySelector('#view'));
   };
 }

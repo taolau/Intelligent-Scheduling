@@ -140,14 +140,14 @@ function draw(canvas, staffs, ctx) {
   g.beginPath(); g.moveTo(pad.left, pad.top + innerH); g.lineTo(W - pad.right, pad.top + innerH); g.stroke();
 
   const fatigueGrad = g.createLinearGradient(0, pad.top, 0, pad.top + innerH);
-  fatigueGrad.addColorStop(0, '#b186d6');
-  fatigueGrad.addColorStop(1, '#5a1d78');
+  fatigueGrad.addColorStop(0, '#fbbf24');
+  fatigueGrad.addColorStop(1, '#d97706');
 
   sorted.forEach((s, i) => {
     const cx = pad.left + groupW * i + groupW / 2;
     const fatigue = ctx.weeklyFatigue.get(s.id) ?? 0;
     const over = fatigue > s.maxWeeklyFatigue;
-    // 劳累柱（紫渐变，圆角）——全图唯一柱，高度即积分
+    // 劳累柱（黄渐变，圆角）——全图唯一柱，高度即积分
     const fh = (fatigue / axisMax) * innerH;
     const barTop = pad.top + innerH - fh;
     g.fillStyle = fatigueGrad;

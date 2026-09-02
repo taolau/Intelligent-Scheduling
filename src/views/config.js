@@ -1,9 +1,9 @@
-import { openModal } from '../ui/modal.js';
+import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { field, setError, rowsEditor } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
 import { createTimePicker } from '../ui/timepicker.js';
-import { getCache, saveProject, saveStaff, getSettings, saveSettings } from '../data/store.js';
+import { getCache, saveProject, saveStaff, getSettings, saveSettings, removeStaff, removeProject } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS } from '../data/model.js';
@@ -17,6 +17,7 @@ const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 15V3m0 0L7 8m5-5l5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>';
 const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
 
@@ -63,6 +64,98 @@ function btn(text, active = false, icon = '') {
   b.innerHTML = `${icon}<span>${text}</span>`;
   b.className = `btn btn-${active ? 'primary' : 'default'}`;
   return b;
+}
+
+// 实时名称筛选：隐藏不匹配卡片；有数据但筛空时补「未找到」空态（数据为空的原生空态不受影响）
+function setupNameFilter(input, grid, noun) {
+  const apply = () => {
+    const kw = input.value.trim().toLowerCase();
+    const cards = [...grid.querySelectorAll('.cfg-card')];
+    let visible = 0;
+    for (const card of cards) {
+      const title = card.querySelector('.cfg-card-title');
+      const hit = !kw || (title && title.textContent.toLowerCase().includes(kw));
+      card.style.display = hit ? '' : 'none';
+      if (hit) visible++;
+    }
+    let empty = grid.querySelector('.grid-empty');
+    if (!kw || !cards.length || visible) {
+      if (empty && cards.length) empty.remove();
+      return;
+    }
+    if (!empty) {
+      empty = document.createElement('div');
+      empty.className = 'grid-empty';
+      empty.style.gridColumn = '1 / -1';
+      grid.appendChild(empty);
+    }
+    empty.textContent = `未找到名称含「${input.value.trim()}」的${noun}`;
+  };
+  input.addEventListener('input', apply);
+}
+
+function searchControl(placeholder) {
+  const input = document.createElement('input');
+  input.className = 'input cfg-search';
+  input.type = 'text';
+  input.placeholder = placeholder;
+  input.title = '按名称实时筛选';
+  return input;
+}
+
+// 卡片装入白底圆角面板，滚动条收在 .cfg-pane-body 内
+function wrapPanel(grid) {
+  const body = document.createElement('div');
+  body.className = 'cfg-pane-body';
+  body.appendChild(grid);
+  const pane = document.createElement('div');
+  pane.className = 'cfg-pane';
+  pane.appendChild(body);
+  return pane;
+}
+
+// 删除弹窗化入口：guard（引用保护）放行后弹 confirmDialog 二次确认，确认才执行 doDelete
+function askDelete({ guard, message, doDelete }) {
+  return () => {
+    if (guard && !guard()) return;
+    confirmDialog({ message, onConfirm: doDelete });
+  };
+}
+
+// 引用保护：人员出现在任何班次中禁止删除（历史须靠「退出」保留）
+function delStaffGuard(s) {
+  const { schedules } = getCache();
+  const n = schedules.filter(sch => sch.staffIds.includes(s.id)).length;
+  if (n) showToast(`「${s.name}」已排 ${n} 个班次，删除会破坏历史记录——请改为状态「退出」`, 'error');
+  return !n;
+}
+
+async function delStaffDo(s) {
+  await removeStaff(s.id);
+  showToast(`已删除「${s.name}」`, 'success');
+  renderConfig(document.querySelector('#view'));
+}
+
+// 引用保护：任务被排班记录或人员配置引用时禁止删除
+function delProjectGuard(p) {
+  const { schedules, staffs } = getCache();
+  const nSch = schedules.filter(s => s.projectId === p.id).length;
+  const nRef = staffs.filter(s =>
+    s.allowedProjects.includes(p.id)
+    || s.preferredProjects.some(x => x.projectId === p.id)
+    || s.bannedProjects.some(x => x.projectId === p.id)).length;
+  if (nSch || nRef) {
+    const parts = [nSch ? `${nSch} 条排班记录` : '', nRef ? `${nRef} 名人员的配置` : ''].filter(Boolean).join('、');
+    showToast(`「${p.name}」正被 ${parts} 引用，删除会破坏数据——可改为「停用」`, 'error');
+    return false;
+  }
+  return true;
+}
+
+async function delProjectDo(p) {
+  await removeProject(p.id);
+  showToast(`已删除「${p.name}」`, 'success');
+  renderConfig(document.querySelector('#view'));
 }
 
 // 值区 tag 超过 2 行时折叠：第 3 行起隐藏，追加「+N」chip；点击展开/收起
@@ -171,12 +264,14 @@ async function renderStaffs(head, scroll) {
   const projName = new Map(projects.map(p => [p.id, p.name]));
   const actions = document.createElement('div');
   actions.className = 'cfg-actions';
-  actions.append(
-    btn('新增人员', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD),
-  );
-  actions.children[0].onclick = () => editStaffDialog();
-  actions.children[1].onclick = () => importDialog({ title: '导入人员', handler: importStaffs, template: downloadStaffTemplate });
-  actions.children[2].onclick = () => exportStaffs();
+  const search = searchControl('筛选人员名称');
+  const addBtn = btn('新增人员', false, ICON_PLUS);
+  const importBtn = btn('Excel 导入', false, ICON_UPLOAD);
+  const exportBtn = btn('Excel 导出', false, ICON_DOWNLOAD);
+  addBtn.onclick = () => editStaffDialog();
+  importBtn.onclick = () => importDialog({ title: '导入人员', handler: importStaffs, template: downloadStaffTemplate });
+  exportBtn.onclick = () => exportStaffs();
+  actions.append(search, addBtn, importBtn, exportBtn);
   head.appendChild(actions);
 
   const grid = document.createElement('div');
@@ -219,7 +314,10 @@ async function renderStaffs(head, scroll) {
             <span class="track"><span class="thumb"></span></span>
           </span>
         </label>
-        <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+        <div class="cfg-op-btns">
+          <button type="button" data-del class="btn btn-del btn-sm">${ICON_TRASH}删除</button>
+          <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+        </div>
       </div>`;
     card.querySelector('[data-toggle]').onchange = async (e) => {
       if (s.status === 'left') return;
@@ -234,11 +332,17 @@ async function renderStaffs(head, scroll) {
       showToast(on ? '已恢复参与' : '已标记休假', 'success');
     };
     card.querySelector('[data-edit]').onclick = () => editStaffDialog(s);
+    card.querySelector('[data-del]').onclick = askDelete({
+      guard: () => delStaffGuard(s),
+      message: `确认删除人员「${s.name}」？删除后不可恢复。`,
+      doDelete: () => delStaffDo(s),
+    });
     grid.appendChild(card);
   }
-  scroll.appendChild(grid);
+  scroll.appendChild(wrapPanel(grid));
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
+  setupNameFilter(search, grid, '人员');
 }
 
 async function editStaffDialog(staff) {
@@ -479,10 +583,14 @@ async function renderProjects(head, scroll) {
   const { projects } = getCache();
   const actions = document.createElement('div');
   actions.className = 'cfg-actions';
-  actions.append(btn('新增任务', false, ICON_PLUS), btn('Excel 导入', false, ICON_UPLOAD), btn('Excel 导出', false, ICON_DOWNLOAD));
-  actions.children[0].onclick = () => editProjectDialog();
-  actions.children[1].onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
-  actions.children[2].onclick = () => exportProjects();
+  const search = searchControl('筛选任务名称');
+  const addBtn = btn('新增任务', false, ICON_PLUS);
+  const importBtn = btn('Excel 导入', false, ICON_UPLOAD);
+  const exportBtn = btn('Excel 导出', false, ICON_DOWNLOAD);
+  addBtn.onclick = () => editProjectDialog();
+  importBtn.onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
+  exportBtn.onclick = () => exportProjects();
+  actions.append(search, addBtn, importBtn, exportBtn);
   head.appendChild(actions);
 
   const slotOrder = new Map(SLOT_LABELS.map((l, i) => [l, i]));
@@ -523,7 +631,10 @@ async function renderProjects(head, scroll) {
             <span class="track"><span class="thumb"></span></span>
           </span>
         </label>
-        <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+        <div class="cfg-op-btns">
+          <button type="button" data-del class="btn btn-del btn-sm">${ICON_TRASH}删除</button>
+          <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
+        </div>
       </div>`;
     card.querySelector('[data-toggle]').onchange = async (e) => {
       const on = e.target.checked;
@@ -535,11 +646,17 @@ async function renderProjects(head, scroll) {
       showToast(on ? '任务已启用' : '任务已停用', 'success');
     };
     card.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
+    card.querySelector('[data-del]').onclick = askDelete({
+      guard: () => delProjectGuard(p),
+      message: `确认删除任务「${p.name}」？删除后不可恢复。`,
+      doDelete: () => delProjectDo(p),
+    });
     grid.appendChild(card);
   }
-  scroll.appendChild(grid);
+  scroll.appendChild(wrapPanel(grid));
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
+  setupNameFilter(search, grid, '任务');
 }
 
 async function editProjectDialog(project) {

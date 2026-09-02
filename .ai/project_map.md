@@ -22,21 +22,21 @@ Intelligent-Scheduling/
 | `data/` | `model.js` | 数据模型定义+校验（Project/Staff/Schedule） | 无 |
 | | `keys.js` | localStorage key 集中登记处（KEYS 全量常量 + STORES 业务表名；新 key 唯一入口，配套 docs/storage.md） | 无 |
 | | `db.js` | localStorage 持久化 + 内存 Map 索引（CRUD + writeAll 批量写，KEYS[storeName] 查表读写） | keys |
-| | `store.js` | 增量缓存门面（saveXxx 增量更新 cache 不重读；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db/keys |
+| | `store.js` | 增量缓存门面（saveXxx/removeXxx 增量更新 cache；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db/keys |
 | `core/` | `week.js` | 周/日期/时间工具（纯函数） | 无 |
 | | `expand.js` | 按 weekDays+slots 展开班次；`expandWeeks` 批量展开连续 N 周 | week |
 | | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
 | | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
 | | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
 | `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
-| | `config.js` | 数据配置页（三 tab：人员/任务/系统设置；**cfg-frame 框架**=tab+操作按钮固定、内容容器内滚；人员/任务**卡片网格**、开关状态切换、编辑弹窗；系统设置=左右双面板参数/规则页；tab 记忆 is_sched:config_tab） | data+ui+excel |
+| | `config.js` | 数据配置页（三 tab：人员/任务/系统设置；**cfg-frame 框架**=tab+操作按钮固定、内容容器内滚；人员/任务卡片网格装入浅紫面板 `.cfg-pane`（面板内滚）+ 头部名称实时筛选 + 卡片开关/编辑/**删除**（引用保护 + confirmDialog 确认）；系统设置=左右双面板参数/规则页；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
 | | `icons.js` | 共享 SVG 图标常量（ICON_FIRE 劳累指数火焰等） | 无 |
 | | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 | select |
 | | `select.js` | 自定义下拉：createSelect 单选/多选统一组件（`searchable` 可搜索过滤），el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
 | | `timepicker.js` | 时间选择器：createTimePicker 点击整个框弹时/分双列面板（小时 00-23、分钟 00-59，选分钟自动收起），el.value 返回 'HH:mm' 或 '' | theme |
-| | `modal.js` | 弹窗（openModal 单点收口全部弹窗：右上角 X 关闭、遮罩点击不关闭、ESC/footer 关闭） | theme |
+| | `modal.js` | 弹窗（openModal 单点收口：遮罩点击不关、ESC/右上 X 关；**弹窗栈**嵌套 ESC 只关顶层；footer 惯例=次钮左/主钮右；**confirmDialog** 破坏性操作二次确认弹窗，box-confirm 窄宽） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
 | | `exportImage.js` | 周历导出 PNG（html2canvas 离屏克隆：固定 1200px 宽/静态视图/标题区），文件名 Numbers-排班图-… | excel(下载) + week |

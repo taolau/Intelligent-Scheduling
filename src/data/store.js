@@ -34,6 +34,8 @@ export async function saveProject(p) { await db.put('projects', p); upsertCache(
 export async function saveStaff(s) { await db.put('staffs', s); upsertCache('staffs', s); }
 export async function saveSchedule(sch) { await db.put('schedules', sch); upsertCache('schedules', sch); }
 export async function removeSchedule(id) { await db.remove('schedules', id); removeCache('schedules', id); }
+export async function removeStaff(id) { await db.remove('staffs', id); removeCache('staffs', id); }
+export async function removeProject(id) { await db.remove('projects', id); removeCache('projects', id); }
 export async function resetAll() { await db.clearAll(); await loadAll(); }
 
 export async function exportJSON() {
