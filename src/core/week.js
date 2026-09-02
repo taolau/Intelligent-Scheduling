@@ -38,6 +38,10 @@ export function getWeekLabel(weekStartStr) {
   return `${dates[0]} ~ ${dates[6]}`;
 }
 
+export function weekdayLabel(dateStr) {
+  return '周' + '日一二三四五六'[parseDate(dateStr).getDay()];
+}
+
 export function isSameDate(a, b) { return a === b; }
 
 export function timeToMinutes(t) {

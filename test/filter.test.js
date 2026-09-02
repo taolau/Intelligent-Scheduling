@@ -115,3 +115,76 @@ test('全部通过', () => {
   const r = filterCandidate(s, slot, projectById, base());
   assert.equal(r.ok, true);
 });
+
+// —— 超限文案三态：当前已超=「已超限」；恰满上限=「已达上限」；未超但加入后超=「将超限」 ——
+
+test('疲劳文案：当前已超上限（4/3）说「已超限」不说「将超限」', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
+  const ctx = base();
+  ctx.weeklyFatigue.set('S1', 4);
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.ok(r.reasons.some(x => x.includes('已超限')));
+  assert.ok(!r.reasons.some(x => x.includes('将超限')));
+});
+
+test('疲劳文案：恰满上限（3/3）说「已达上限」', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
+  const ctx = base();
+  ctx.weeklyFatigue.set('S1', 3);
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.ok(r.reasons.some(x => x.includes('已达上限')));
+  assert.ok(!r.reasons.some(x => x.includes('超限')));
+});
+
+test('疲劳文案：未超但加入后超（2/3 + 高强度3）说「将超限」', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
+  const ctx = base();
+  ctx.weeklyFatigue.set('S1', 2);
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.ok(r.reasons.some(x => x.includes('将超限')));
+  assert.ok(!r.reasons.some(x => x.includes('已超限')));
+});
+
+test('高强度次数文案：已超（2/1）与恰满（1/1）区分', () => {
+  const s1 = createStaff({ id: 'S1', name: '张三', maxHeavyTaskCount: 1 });
+  const ctx1 = base();
+  ctx1.heavyCounts.set('S1', 2);
+  const r1 = filterCandidate(s1, slot, projectById, ctx1);
+  assert.ok(r1.reasons.some(x => x.includes('已超限')));
+
+  const s2 = createStaff({ id: 'S2', name: '李四', maxHeavyTaskCount: 1 });
+  const ctx2 = base();
+  ctx2.heavyCounts.set('S2', 1);
+  const r2 = filterCandidate(s2, slot, projectById, ctx2);
+  assert.ok(r2.reasons.some(x => x.includes('已达上限')));
+  assert.ok(!r2.reasons.some(x => x.includes('已超限')));
+});
+
+test('当日任务数文案：已超（3/2）与恰满（2/2）区分', () => {
+  const s1 = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102', 'P103'] });
+  const ctx1 = base();
+  ctx1.dailyCounts.set('S1|2026-08-24', 3);
+  const r1 = filterCandidate(s1, slot, projectById, ctx1);
+  assert.ok(r1.reasons.some(x => x.includes('当日') && x.includes('已超限')));
+
+  const s2 = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P101', 'P102', 'P103'] });
+  const ctx2 = base();
+  ctx2.dailyCounts.set('S2|2026-08-24', 2);
+  const r2 = filterCandidate(s2, slot, projectById, ctx2);
+  assert.ok(r2.reasons.some(x => x.includes('当日') && x.includes('已达上限')));
+  assert.ok(!r2.reasons.some(x => x.includes('将超限')));
+});
+
+test('时段任务数文案：已超与恰满区分', () => {
+  const s1 = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102'] });
+  const ctx1 = base();
+  ctx1.slotCounts.set('S1|2026-08-24|早', 2); // slotTaskLimit 默认 1
+  const r1 = filterCandidate(s1, slot, projectById, ctx1);
+  assert.ok(r1.reasons.some(x => x.includes('时段') && x.includes('已超限')));
+
+  const s2 = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P101', 'P102'] });
+  const ctx2 = base();
+  ctx2.slotCounts.set('S2|2026-08-24|早', 1);
+  const r2 = filterCandidate(s2, slot, projectById, ctx2);
+  assert.ok(r2.reasons.some(x => x.includes('时段') && x.includes('已达上限')));
+});

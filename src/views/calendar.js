@@ -2,7 +2,7 @@ import { expandWeeks } from '../core/expand.js';
 import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
-import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr } from '../core/week.js';
+import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayLabel } from '../core/week.js';
 import { getCache, saveSchedule, getSettings, removeSchedule } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { createSchedule, SLOT_LABELS } from '../data/model.js';
@@ -43,6 +43,7 @@ const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M6 9l6 6 6-6"/></svg>';
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;display:block"><path d="M20 6L9 17l-5-5"/></svg>';
 
 export async function renderCalendar(container) {
   data = getCache();
@@ -351,8 +352,9 @@ function renderScheduleCard(sch, readOnly = false) {
   const cap = document.createElement('div');
   cap.className = `sch-capacity${filled >= capacity ? ' ok' : ''}`;
   cap.textContent = filled >= capacity ? '已满' : (filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`);
-  if (filled === 0) {
-    // 底部一行：需 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
+  if (!readOnly && filled < capacity) {
+    // 底部一行：需/缺 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
+    // 条件与 fillSchedule 对齐：未满员即逐名额填充，非仅空班次（原 filled===0，手动加 1 人后闪电消失）
     const row = document.createElement('div');
     row.className = 'sch-cap-row';
     const smart = document.createElement('button');
@@ -705,18 +707,38 @@ function openReplaceDialog(staff, sch) {
   const STATUS_TXT = { new: '新入', rest: '休假中', left: '已退出' };
   const body = document.createElement('div');
 
+  const daySchedules = data.schedules.filter(s => s.date === sch.date && s.staffIds.includes(staff.id));
+  // 按时段行序（自主安排/早/中/晚，同周历网格）排序，同段保持原序
+  daySchedules.sort((a, b) => SLOT_LABELS.indexOf(a.slotLabel) - SLOT_LABELS.indexOf(b.slotLabel));
+
+  // —— 头部：被替换人信息 ——
   const head = document.createElement('div');
   head.className = 'rpl-head';
-  const title = document.createElement('div');
-  title.className = 'rpl-title';
-  title.innerHTML = `<span>${staff.name}</span>${STATUS_TXT[staff.status] ? `<span class="assign-tag">${STATUS_TXT[staff.status]}</span>` : ''}`;
-  const sub = document.createElement('div');
-  sub.className = 'rpl-sub';
-  sub.textContent = `本周劳累积分 ${ctx.weeklyFatigue.get(staff.id) ?? 0}/${staff.maxWeeklyFatigue}`;
-  head.append(title, sub);
+  const who = document.createElement('div');
+  who.className = 'rpl-who';
+  const nameEl = document.createElement('span');
+  nameEl.textContent = staff.name;
+  who.appendChild(nameEl);
+  if (STATUS_TXT[staff.status]) {
+    const tag = document.createElement('span');
+    tag.className = 'assign-tag';
+    tag.textContent = STATUS_TXT[staff.status];
+    who.appendChild(tag);
+  }
+  const meta = document.createElement('div');
+  meta.className = 'rpl-meta';
+  meta.append(`今日 ${daySchedules.length} 个班次 · 周劳累积分 `);
+  const fat = document.createElement('span');
+  const refreshFat = () => {
+    const v = ctx.weeklyFatigue.get(staff.id) ?? 0;
+    fat.textContent = `${v}/${staff.maxWeeklyFatigue}`;
+    fat.className = 'rpl-fatigue' + (v > staff.maxWeeklyFatigue ? ' over' : '');
+  };
+  meta.appendChild(fat);
+  refreshFat();
+  head.append(who, meta);
   body.appendChild(head);
 
-  const daySchedules = data.schedules.filter(s => s.date === sch.date && s.staffIds.includes(staff.id));
   if (daySchedules.length === 0) {
     const none = document.createElement('div');
     none.className = 'asg-empty';
@@ -724,14 +746,24 @@ function openReplaceDialog(staff, sch) {
     body.appendChild(none);
   }
 
-  openModal({ title: `替换 · ${staff.name}`, body });
+  openModal({ title: '人员替换', body });
 
   function renderGroup(container, s) {
+    const project = projectById[s.projectId];
     const group = document.createElement('div');
     group.className = 'rpl-group';
     const gTitle = document.createElement('div');
     gTitle.className = 'rpl-group-title';
-    gTitle.textContent = `${s.date} ${s.slotLabel} · ${projectById[s.projectId]?.name ?? s.projectId}`;
+    const dt = document.createElement('span');
+    dt.className = 'rpl-date';
+    dt.textContent = `${weekdayLabel(s.date)} · ${s.date.slice(5)}`;
+    const slotTag = document.createElement('span');
+    slotTag.className = 'rpl-slot';
+    slotTag.textContent = s.slotLabel;
+    const task = document.createElement('span');
+    task.className = 'rpl-task';
+    task.textContent = project?.name ?? s.projectId;
+    gTitle.append(dt, slotTag, task);
     const list = document.createElement('div');
     list.className = 'rpl-list';
     group.append(gTitle, list);
@@ -742,28 +774,34 @@ function openReplaceDialog(staff, sch) {
       if (recom.length === 0) {
         const none = document.createElement('div');
         none.className = 'asg-empty';
-        none.textContent = '无可替补人员';
+        none.textContent = '暂无可用替补人员';
         list.appendChild(none);
         return;
       }
-      for (const r of recom) {
-        const row = document.createElement('div');
-        row.className = 'assign-row pickable';
+      recom.forEach((r, i) => {
+        const card = document.createElement('div');
+        card.className = 'rpl-cand';
+        const main = document.createElement('div');
+        main.className = 'rpl-cand-main';
         const nm = document.createElement('span');
-        nm.className = 'assign-name';
+        nm.className = 'rpl-cand-name';
         nm.textContent = r.staff.name;
-        const why = document.createElement('span');
-        why.className = 'assign-why';
-        why.textContent = r.reasons.join('；');
-        const info = document.createElement('span');
-        info.className = 'assign-info';
-        info.textContent = `得分 ${r.score}`;
-        const add = document.createElement('span');
-        add.className = 'assign-add';
-        add.textContent = '选此替补';
-        row.append(nm, why, info, add);
-        row.onclick = async () => {
-          const project = projectById[s.projectId];
+        const score = document.createElement('span');
+        score.className = 'rpl-cand-score' + (i === 0 ? ' top' : '');
+        score.textContent = `${Math.round(r.score)} 分`;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rpl-cand-btn';
+        btn.textContent = '选此替补';
+        main.append(nm, score, btn);
+        card.appendChild(main);
+        if (r.reasons.length > 0) {
+          const why = document.createElement('div');
+          why.className = 'rpl-cand-why';
+          why.textContent = r.reasons.join('；');
+          card.appendChild(why);
+        }
+        async function replace() {
           // 一减一增：移除被替换者计数、累加替补者计数，ctx 同步防算法层计数错乱
           ctx.weeklyFatigue.set(staff.id, Math.max(0, (ctx.weeklyFatigue.get(staff.id) ?? 0) - project.fatigueScore));
           if (project.fatigueScore === 3) ctx.heavyCounts.set(staff.id, Math.max(0, (ctx.heavyCounts.get(staff.id) ?? 0) - 1));
@@ -781,22 +819,37 @@ function openReplaceDialog(staff, sch) {
           s.staffIds = s.staffIds.filter(id => id !== staff.id);
           s.staffIds.push(r.staff.id);
           await saveSchedule(s);
+
+          // 整组折叠为完成条（done 标记供后续替换跳过重算），释放纵向空间
           group.classList.add('done');
-          list.innerHTML = '';
-          const done = document.createElement('div');
-          done.className = 'rpl-done';
-          done.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M20 6L9 17l-5-5"/></svg>已由 ' + r.staff.name + ' 替换';
-          group.appendChild(done);
-          sub.textContent = `本周劳累积分 ${ctx.weeklyFatigue.get(staff.id) ?? 0}/${staff.maxWeeklyFatigue}`;
+          group.innerHTML = '';
+          const bar = document.createElement('div');
+          bar.className = 'rpl-done-bar';
+          const barInfo = document.createElement('span');
+          barInfo.className = 'rpl-done-info';
+          barInfo.textContent = `${weekdayLabel(s.date)} · ${s.date.slice(5)} · ${s.slotLabel} · ${project?.name ?? s.projectId}`;
+          const ok = document.createElement('span');
+          ok.className = 'rpl-done-ok';
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = r.staff.name;
+          const iconEl = document.createElement('span');
+          iconEl.innerHTML = ICON_CHECK;
+          ok.append(iconEl, `已由 `, nameSpan, ` 替换`);
+          bar.append(barInfo, ok);
+          group.appendChild(bar);
+
+          refreshFat();
           showToast(`已由 ${r.staff.name} 替换`, 'success');
           renderCalendar(document.querySelector('#view'));
           // 其余未替换组的候选基于旧 ctx 计算，替换后可能过期（如替补者当日已达上限），重算
           for (const other of container.children) {
             if (other !== group && !other.classList.contains('done')) other._rerender?.();
           }
-        };
-        list.appendChild(row);
-      }
+        }
+        card.onclick = replace;
+        btn.onclick = (e) => { e.stopPropagation(); replace(); };
+        list.appendChild(card);
+      });
     }
     renderCandidates();
     group._rerender = renderCandidates;

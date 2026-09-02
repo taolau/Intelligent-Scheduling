@@ -73,12 +73,31 @@ const css = `
   opacity:0; transform:translateX(4px); transition:opacity .12s, transform .12s; }
 .assign-row.pickable:hover .assign-add { opacity:1; transform:none; }
 .rpl-head { margin-bottom:14px; }
-.rpl-title { display:flex; align-items:center; gap:8px; font-size:17px; font-weight:700; color:#2a2430; }
-.rpl-sub { font-size:12px; color:#6a6178; margin-top:4px; }
+.rpl-who { display:flex; align-items:center; gap:8px; font-size:17px; font-weight:700; color:#2a2430; }
+.rpl-meta { font-size:12px; color:#6a6178; margin-top:3px; }
+.rpl-fatigue.over { color:#dc2626; font-weight:700; }
 .rpl-group { border:1px solid #e0d2ef; border-radius:10px; padding:10px 12px; margin-bottom:10px; background:#faf7fc; }
-.rpl-group-title { font-size:13px; font-weight:600; color:#5a1d78; margin-bottom:6px; }
-.rpl-group.done { opacity:.8; background:#f2fbf4; border-color:#bbe3c5; }
-.rpl-done { display:flex; align-items:center; gap:6px; color:#16a34a; font-size:13px; padding:6px 0; }
+.rpl-group.done { border-color:#bbe3c5; background:#f0fbf3; }
+.rpl-group-title { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#2a2430; margin-bottom:8px; }
+.rpl-date { color:#6a6178; font-weight:500; }
+.rpl-slot { font-size:11px; color:#5a1d78; background:#efe3f6; border-radius:6px; padding:1px 7px; flex-shrink:0; }
+.rpl-task { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rpl-list { display:flex; flex-direction:column; gap:4px; }
+.rpl-cand { padding:7px 10px; border-radius:8px; cursor:pointer; transition:background-color .1s; }
+.rpl-cand:hover { background:#f3e9fa; }
+.rpl-cand-main { display:flex; align-items:center; gap:8px; }
+.rpl-cand-name { font-weight:500; color:#2a2430; }
+.rpl-cand-score { font-size:11px; color:#8a8099; background:#f1edf5; border-radius:999px; padding:1px 8px; }
+.rpl-cand-score.top { color:#5a1d78; background:#efe3f6; font-weight:700; }
+.rpl-cand-btn { margin-left:auto; flex-shrink:0; font-size:12px; color:#5a1d78; background:#fff;
+  border:1px solid #c9b2dc; border-radius:999px; padding:2px 12px; cursor:pointer;
+  transition:background-color .12s, color .12s, border-color .12s; }
+.rpl-cand-btn:hover { background:#5a1d78; border-color:#5a1d78; color:#fff; }
+.rpl-cand-why { font-size:12px; color:#6a6178; line-height:1.55; margin-top:3px; }
+.rpl-done-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:24px; }
+.rpl-done-info { font-size:12px; color:#2a2430; font-weight:600; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.rpl-done-ok { display:inline-flex; align-items:center; gap:5px; color:#16a34a; font-size:13px; font-weight:600; flex-shrink:0; }
 .week-label { font-weight:600; padding:6px 8px; display:inline-block; }
 
 /* ===== 表单 ===== */
@@ -416,7 +435,10 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cfg-card-rows { display:flex; flex-direction:column; gap:7px; font-size:13px; }
 .cfg-row { display:flex; align-items:flex-start; gap:8px; }
 .cfg-row .k { flex-shrink:0; min-width:5.5em; color:#6a6178; }
-.cfg-row .v { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+.cfg-row .v { display:flex; flex-wrap:wrap; gap:4px; min-width:0; align-items:center; }
+/* 任务说明文本：明确 line-height 供 JS 行数测量，长文本强制换行 */
+.cfg-row .v-text { display:inline-block; line-height:1.5; word-break:break-all; }
+textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .cfg-card-ops { margin-top:auto; display:flex; justify-content:space-between; align-items:center; gap:8px; padding-top:2px; }
 .grid-empty { padding:28px; text-align:center; color:#9b91a7; font-size:14px; }
 

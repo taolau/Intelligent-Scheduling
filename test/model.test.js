@@ -8,7 +8,8 @@ test('createProject 带默认值', () => {
   assert.equal(p.fatigueScore, 1);
   assert.equal(p.requiredCapacity, 1);
   assert.deepEqual(p.weekDays, []);
-  assert.deepEqual(p.slots, []);
+  assert.deepEqual(p.slots, [{ label: '自主安排' }]);
+  assert.equal(p.description, '');
   assert.equal(p.active, true);
   assert.equal(p.timeRange, null);
 });
@@ -107,8 +108,11 @@ test('SLOT_LABELS 预置四时段标签', () => {
   assert.deepEqual(SLOT_LABELS, ['自主安排', '早', '中', '晚']);
 });
 
-test('DEFAULT_SETTINGS 数量上限默认值', () => {
-  assert.deepEqual(DEFAULT_SETTINGS, { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2 });
+test('DEFAULT_SETTINGS 默认值', () => {
+  assert.deepEqual(DEFAULT_SETTINGS, {
+    dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2,
+    preferredBonus: 15, balanceFactor: 5,
+  });
 });
 
 test('createSchedule 默认空人员', () => {

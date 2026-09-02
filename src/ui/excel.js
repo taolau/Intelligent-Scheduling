@@ -12,6 +12,7 @@ const PROJECT_BASE_COLS = [
   '时段(必填;自主安排/早/中/晚,分号隔开)',
   '时间段开始(HH:mm;选填)',
   '时间段结束(HH:mm;选填)',
+  '任务说明(选填)',
   '启用(选填;1=启用,0=禁用,默认1)',
 ];
 const STAFF_BASE_COLS = [
@@ -27,7 +28,7 @@ const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
 const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
-const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '1'];
+const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '1'];
 const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '6', '1'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
@@ -117,6 +118,7 @@ export async function exportProjects() {
     (p.weekDays ?? []).map(d => d === 0 ? 7 : d).join(';'),
     (p.slots ?? []).map(s => s.label).join(';'),
     p.timeRange?.start ?? '', p.timeRange?.end ?? '',
+    p.description ?? '',
     p.active === false ? 0 : 1,
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -188,6 +190,7 @@ export async function importProjects(file) {
         weekDays: parseWeekDays(r['重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)']),
         slots: parseSlots(r['时段(必填;自主安排/早/中/晚,分号隔开)']),
         timeRange: parseTimeRange(r['时间段开始(HH:mm;选填)'], r['时间段结束(HH:mm;选填)']),
+        description: String(r['任务说明(选填)'] ?? '').trim(),
         active: String(r['启用(选填;1=启用,0=禁用,默认1)'] ?? '1') !== '0',
       };
       // 同名或同 ID 覆盖（保留原 ID 保引用），否则新增；文件内多行同名后者覆盖前者

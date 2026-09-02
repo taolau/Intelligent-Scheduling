@@ -6,7 +6,7 @@ import { createTimePicker } from '../ui/timepicker.js';
 import { getCache, saveProject, saveStaff, getSettings, saveSettings } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS } from '../data/model.js';
 import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
 
 function esc(v) {
@@ -65,6 +65,8 @@ function setTab(on, off) {
 function foldTags(vEl) {
   const old = vEl.querySelector('.tag-more');
   if (old) old.remove();
+  const textEl = vEl.querySelector('.v-text');
+  if (textEl) return foldText(vEl, textEl);
   const tags = [...vEl.children].filter(el => el.classList.contains('tag'));
   if (!tags.length) return;
   tags.forEach(t => { t.style.display = ''; });
@@ -88,6 +90,30 @@ function foldTags(vEl) {
     hiddenIdx.push(i);
     chip.textContent = `+${hiddenIdx.length}`;
   }
+}
+
+// 说明文本超 2 行时折叠：末尾省略号「…」提示，点击展开/收起全文，hover title 看全
+function foldText(vEl, textEl) {
+  textEl.style.display = '';
+  textEl.style.webkitLineClamp = '';
+  textEl.style.webkitBoxOrient = '';
+  textEl.style.overflow = '';
+  const lh = parseFloat(getComputedStyle(textEl).lineHeight) || 20;
+  const rows = Math.round(textEl.offsetHeight / lh);
+  if (rows <= 2) {
+    textEl.style.cursor = '';
+    return;
+  }
+  textEl.style.cursor = 'pointer';
+  textEl.onclick = () => {
+    vEl.dataset.fold = vEl.dataset.fold === 'open' ? 'folded' : 'open';
+    foldText(vEl, textEl);
+  };
+  if (vEl.dataset.fold === 'open') return;
+  textEl.style.display = '-webkit-box';
+  textEl.style.webkitLineClamp = '2';
+  textEl.style.webkitBoxOrient = 'vertical';
+  textEl.style.overflow = 'hidden';
 }
 
 function appendMore(vEl, tags, hiddenIdx, text, isOpen = false) {
@@ -355,6 +381,7 @@ async function renderProjects(body) {
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
         <div class="cfg-row"><span class="k">时间段</span><span class="v">${timeRange}</span></div>
+        <div class="cfg-row"><span class="k">任务说明</span><span class="v">${p.description ? `<span class="v-text" title="${esc(p.description)}">${esc(p.description)}</span>` : '<span class="empty">—</span>'}</span></div>
       </div>
       <div class="cfg-card-ops">
         <label class="switch-wrap">
@@ -461,7 +488,14 @@ async function editProjectDialog(project) {
   });
   const activeF = field({ label: '启用状态', control: activeSel });
 
-  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, timeF.wrap, activeF.wrap);
+  const descInput = document.createElement('textarea');
+  descInput.className = 'input';
+  descInput.rows = 3;
+  descInput.value = target.description ?? '';
+  descInput.placeholder = '任务情况、注意事项等（选填）';
+  const descF = field({ label: '任务说明', control: descInput });
+
+  body.append(nameF.wrap, fatigueF.wrap, capF.wrap, daysF.wrap, slotEditor.el, timeF.wrap, descF.wrap, activeF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -488,6 +522,7 @@ async function editProjectDialog(project) {
       slots: dedupeSlots(slotEditor.collect().map(r => ({ label: r.slot }))),
       active: activeSel.value === 'true',
       timeRange: start && end ? { start, end } : null,
+      description: descInput.value.trim(),
     });
     const v = validateProject(draft);
     if (!v.valid) {
@@ -573,11 +608,16 @@ function settingsDialog() {
   const dailyInput = num(s.dailyTaskLimit);
   const slotInput = num(s.slotTaskLimit);
   const warnInput = num(s.warnDailyCount);
+  const bonusInput = num(s.preferredBonus);
+  const factorInput = num(s.balanceFactor);
   const hint = document.createElement('p');
-  hint.style.cssText = 'margin-bottom:12px;color:#6a6178;font-size:13px;';
-  hint.textContent = '数量上限替代时间冲突：一人当天或同一时段的班次数达到上限即禁止再排；接近上限时预警提醒。';
+  hint.style.cssText = 'margin-bottom:12px;color:#6a6178;font-size:13px;line-height:1.6;';
+  hint.textContent = '任务数上限：一人当天或同一时段的班次数达到上限即禁止再排；接近上限时预警。擅长加分：命中擅长项目时加的分，越大越优先用熟练的人。均衡系数：按「团队平均疲劳 − 本人疲劳」放大差距的倍数，越大越优先排本周干得少的人（劳逸均衡）。';
   const body = document.createElement('div');
-  body.append(hint, row('一人一天最多任务数', dailyInput), row('一人一时段最多任务数', slotInput), row('当天任务数达多少预警', warnInput));
+  body.append(hint,
+    row('一人一天最多任务数', dailyInput), row('一人一时段最多任务数', slotInput),
+    row('当天任务数达多少预警', warnInput), row('擅长加分（默认 15）', bonusInput),
+    row('均衡系数（默认 5）', factorInput));
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -590,6 +630,8 @@ function settingsDialog() {
       dailyTaskLimit: Math.max(1, Number(dailyInput.value) || 1),
       slotTaskLimit: Math.max(1, Number(slotInput.value) || 1),
       warnDailyCount: Math.max(1, Number(warnInput.value) || 1),
+      preferredBonus: Math.max(1, Number(bonusInput.value) || DEFAULT_SETTINGS.preferredBonus),
+      balanceFactor: Math.max(1, Number(factorInput.value) || DEFAULT_SETTINGS.balanceFactor),
     });
     modal.close();
     showToast('设置已保存', 'success');

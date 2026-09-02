@@ -2,7 +2,7 @@ export const SLOT_LABELS = ['自主安排', '早', '中', '晚'];
 export const STAFF_STATUSES = ['new', 'active', 'rest', 'left'];
 export const FATIGUE_MAX = 3;
 // 数量上限 + 预警阈值：去时间后替代时间冲突，可在配置页「设置」弹窗修改
-export const DEFAULT_SETTINGS = { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2 };
+export const DEFAULT_SETTINGS = { dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 2, preferredBonus: 15, balanceFactor: 5 };
 
 export function createProject(fields = {}) {
   return {
@@ -11,7 +11,8 @@ export function createProject(fields = {}) {
     fatigueScore: fields.fatigueScore ?? 1,
     requiredCapacity: fields.requiredCapacity ?? 1,
     weekDays: fields.weekDays ?? [],
-    slots: fields.slots ?? [],
+    slots: fields.slots ?? [{ label: SLOT_LABELS[0] }], // 新任务默认一个「自主安排」时段
+    description: fields.description ?? '', // 任务说明（选填，仅展示）
     active: fields.active ?? true,
     timeRange: fields.timeRange ?? null, // 选填执行窗口 {start,end} HH:mm，仅展示不参与算法
   };

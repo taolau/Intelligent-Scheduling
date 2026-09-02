@@ -41,8 +41,9 @@ export function recommendSubstitutes(staffs, schedule, projectById, ctx, exclude
     const { score, breakdown } = scoreCandidate(staff, schedule, projectById, {
       weeklyFatigue: ctx.weeklyFatigue,
       teamAvg: ctx.teamAvg,
+      settings: ctx.settings,
     });
-    const reasons = breakdown.map(b => b.reason ? `${b.label}(${b.points})：${b.reason}` : `${b.label}(${b.points})`);
+    const reasons = breakdown.map(b => b.reason ? `${b.label}(${Math.round(b.points)})：${b.reason}` : `${b.label}(${Math.round(b.points)})`);
     scored.push({ staff, score, reasons, breakdown });
   }
   scored.sort((a, b) => b.score - a.score);

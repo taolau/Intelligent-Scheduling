@@ -14,18 +14,32 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
 
   if (!staff.allowedProjects.includes(schedule.projectId)) reasons.push('无该任务权限');
 
-  const dailyAfter = (ctx.dailyCounts?.get(`${staff.id}|${schedule.date}`) ?? 0) + 1;
-  if (dailyAfter > dailyTaskLimit) reasons.push(`当日任务数将超限（最多 ${dailyTaskLimit} 个）`);
+  // 超限三态文案：当前已超上限=「已超限」；恰满上限=「已达上限」；未超但加入后超=「将超限」
+  const daily = ctx.dailyCounts?.get(`${staff.id}|${schedule.date}`) ?? 0;
+  if (daily + 1 > dailyTaskLimit) {
+    if (daily > dailyTaskLimit) reasons.push(`当日任务数已超限（上限 ${dailyTaskLimit} 个）`);
+    else reasons.push(`当日任务数已达上限（${dailyTaskLimit} 个）`);
+  }
 
-  const slotAfter = (ctx.slotCounts?.get(`${staff.id}|${schedule.date}|${schedule.slotLabel}`) ?? 0) + 1;
-  if (slotAfter > slotTaskLimit) reasons.push(`时段任务数将超限（最多 ${slotTaskLimit} 个）`);
+  const slot = ctx.slotCounts?.get(`${staff.id}|${schedule.date}|${schedule.slotLabel}`) ?? 0;
+  if (slot + 1 > slotTaskLimit) {
+    if (slot > slotTaskLimit) reasons.push(`时段任务数已超限（上限 ${slotTaskLimit} 个）`);
+    else reasons.push(`时段任务数已达上限（${slotTaskLimit} 个）`);
+  }
 
-  const fatigueAfter = (ctx.weeklyFatigue.get(staff.id) ?? 0) + project.fatigueScore;
-  if (fatigueAfter > staff.maxWeeklyFatigue) reasons.push('本周劳累积分将超限');
+  const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
+  if (fatigue + project.fatigueScore > staff.maxWeeklyFatigue) {
+    if (fatigue > staff.maxWeeklyFatigue) reasons.push(`本周劳累积分已超限（上限 ${staff.maxWeeklyFatigue}）`);
+    else if (fatigue === staff.maxWeeklyFatigue) reasons.push(`本周劳累积分已达上限（${staff.maxWeeklyFatigue}）`);
+    else reasons.push(`本周劳累积分将超限（上限 ${staff.maxWeeklyFatigue}）`);
+  }
 
   if (project.fatigueScore === 3) {
-    const heavyAfter = (ctx.heavyCounts.get(staff.id) ?? 0) + 1;
-    if (heavyAfter > staff.maxHeavyTaskCount) reasons.push('本周高强度次数将超限');
+    const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
+    if (heavy + 1 > staff.maxHeavyTaskCount) {
+      if (heavy > staff.maxHeavyTaskCount) reasons.push(`本周高强度次数已超限（上限 ${staff.maxHeavyTaskCount} 次）`);
+      else reasons.push(`本周高强度次数已达上限（${staff.maxHeavyTaskCount} 次）`);
+    }
   }
 
   return { ok: reasons.length === 0, reasons };
