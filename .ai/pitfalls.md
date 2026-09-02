@@ -207,3 +207,27 @@
 - **根因**：四步竞态链——①点击选项瞬间 mousedown 使搜索框失焦；②失焦强制结束未确认的输入法组合，浏览器补发一次 input 事件；③input → renderOptions() 重建全部选项 DOM，被按住的原选项节点脱离文档；④click 只派发在 mousedown/mouseup 的公共祖先上，公共祖先已在 panel 外 → 冒泡到 document 的「点外关闭」→ 纯关闭（choose 从未执行）
 - **解决**：选项节点上 `mousedown` 事件 `preventDefault()`（阻止焦点转移：搜索框不失焦 → 组合不被打断 → DOM 稳定 → click 正常落在原选项）；select.js renderOptions 循环内一行。**伴随修复**：onKey 回车分支 `choose(activeIndex)` 误传索引数字（0 被 `!o` 判空 return 选第一项无反应，非 0 取 `.value` 得 undefined）→ 改 `choose(view[activeIndex])`；搜索过滤后 activeIndex 未夹取（仍是全量列表旧值会越界）→ renderOptions 内重置
 - **启示**：可搜索下拉的选项必须 mousedown preventDefault（业界标准做法），单纯绑 onclick 挡不住失焦重建竞态；「点击无反应」类 bug 先查 mousedown~click 之间 DOM 是否被重建——click 的事件目标由 mousedown/mouseup 公共祖先决定，不是鼠标按住时的那个节点
+
+## 26. flex 容器内固定尺寸 SVG 与文本混排：默认 align-items:stretch 使图标贴行框顶部，视觉偏上
+
+- **报错**：任务卡片「时间段」字段值里时钟图标高度位置不对、与文字不对称（偏上约 2px）
+- **场景**：`.cfg-row .v`（`display:flex`）内 `内联SVG + 文本` 混排——时间段有值时 `${ICON_CLOCK} ${时间}`，SVG 12×12、文本 13px（行框 ≈16px）
+- **根因**：flex 容器 `align-items` 默认 `stretch`：文本匿名 item 拉伸至行框高，固定尺寸（width/height 内联定死）的 SVG 不参与拉伸、沿交叉轴起点（顶部）对齐 → SVG 顶边贴合行框顶，行高 > 图标高时图标中心高于文字中心。**隐蔽性**：全图标行（如劳累指数多枚火焰 SVG）彼此顶部一致看不出问题；纯文本行无图标也看不出；只有「图标+文字」混排行暴露
+- **解决**：`.cfg-row .v` 加 `align-items:center`（混排行图标与文字垂直居中）；对等高 tag 行（同容器其他用途）无副作用——行高不变，折叠测量（offsetTop/offsetHeight 分行）不受影响
+- **启示**：flex 容器内「固定尺寸子元素 + 会拉伸的子元素」混排时，先想清楚 align-items——默认 stretch 下固定元素贴顶部；排查「图标/徽章比同行文字高或低」的视觉 bug，先看容器是 flex 还是 inline 布局（inline 走 baseline 是另一种错位），再对症用 align-items:center 或 vertical-align:middle
+
+## 27. 超限/拒绝类提示文案必须区分「当前态」与「预测态」：已超不说成将超
+
+- **报错**：周疲劳 20/7（当前 20 已超上限 7）的候选人被拒，提示却是「本周劳累积分将超限」
+- **场景**：排班分配弹窗候选人被拒理由（filter 返回 reasons），亦波及替换弹窗、拖拽红框、智能排班（全链路直渲同一 reasons）
+- **根因**：filter.js 超限检查只算「加后值 > 上限」即拒绝，reason 恒模板「…将超限」，**从不读当前值分支文案**——当前已超（cur>limit）该说「已超限」、恰满（cur===limit）该说「已达上限」、仅「未超但加后超」才配说「将超限」（+1 型检查不可能出现第三种，只有疲劳检查因加分 1-3 可跳超）
+- **解决**：按当前值三分文案（`cur>limit` 已超限 / `cur===limit` 已达上限 / 余下将超限），判定逻辑不变；与 chip 视觉层级对齐（>`上限`=over 红、`=`=warn 黄）；文案改动同步 UI 直渲层无感知
+- **启示**：面向用户的数值限制提示先问「此刻处于什么状态」再选词——「现状（已/达）」与「预测（将）」是两个语义域；模板文案一刀切最容易漏掉已超的现状表达
+
+## 28. 消费 settings 时整体解构当心部分缺键：undefined 参与运算 → NaN 静默传播
+
+- **报错**：自定义偏好参数测试 `r.score` 断言 20 实际 NaN；`均衡加分` 分值 NaN
+- **场景**：score.js 从 `ctx.settings ?? DEFAULT_SETTINGS` 整体解构 `{ preferredBonus, balanceFactor }`，测试只传 `settings: { preferredBonus: 20 }`
+- **根因**：`?? DEFAULT_SETTINGS` 只在 settings **整体为 undefined** 时兜底；settings 存在但**缺个别键**（部分传入/旧数据/不同调用方构造的局部 ctx）时解构得 `undefined` → `undefined * n = NaN`，且不报错一路算进 score 排序（静默错误）。项目里 store.getSettings 有 merge 层保证全键，容易误以为「settings 永远全键」，绕过 merge 直接构造 ctx 的调用（测试/新函数）即触发
+- **解决**：score.js 改逐键兜底 `ctx.settings?.preferredBonus ?? DEFAULT_SETTINGS.preferredBonus`（每键独立 ??）；同时补部分键传入的测试用例钉住
+- **启示**：凡消费「带默认值的配置对象」，不要整体解构一把 ?? 兜底——逐键 ?? 才免疫部分缺键；有 merge 层的配置数据只对走 merge 的路径成立，调用边界（测试、新入口）常直接传局部对象

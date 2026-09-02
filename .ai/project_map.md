@@ -11,7 +11,7 @@ Intelligent-Scheduling/
   package.json        # scripts: dev(vite) / build(esbuild单文件) / test(node:test)
   build.js            # 打包脚本 → dist/index.html（开发多模块,发布单文件）
   dist/               # 构建产物（gitignore,仅 index.html）
-  docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则）
+  docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则；score-rules.md = 排班推荐分数规则人话手册，spec 4.x 为真源）
   test/               # node:test 单测（算法层+模型+数据层 db/store）
 ```
 
@@ -28,7 +28,7 @@ Intelligent-Scheduling/
 | | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
 | | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
 | | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
-| `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片） | core+data+ui |
+| `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
 | | `config.js` | 基础配置页（人员/任务**卡片网格**，开关切换状态、编辑弹窗；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
