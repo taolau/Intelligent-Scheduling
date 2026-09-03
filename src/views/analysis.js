@@ -1,9 +1,16 @@
 import { buildContext } from '../core/substitute.js';
 import { getCache } from '../data/store.js';
-import { getWeekStart, getWeekDates, todayStr, toDateStr } from '../core/week.js';
+import { getWeekStart, getWeekLabel, todayStr, toDateStr, weekdayLabel, parseDate } from '../core/week.js';
 
-let weekStart = getWeekStart(todayStr());
+let mode = 'week'; // day | week | month
+let anchor = anchorStart(mode, todayStr()); // 窗口首日（day/week 为日期串，month 恒为 yyyy-mm-01）
 let resizeHandler = null;
+
+// 侧栏菜单进入时重置为默认视图：周粒度 + 本周窗口
+export function resetAnalysisView() {
+  mode = 'week';
+  anchor = anchorStart(mode, todayStr());
+}
 
 const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M15 18l-6-6 6-6"/></svg>';
 const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M9 18l6-6-6-6"/></svg>';
@@ -20,35 +27,60 @@ export async function renderAnalysis(container) {
   if (resizeHandler) { window.removeEventListener('resize', resizeHandler); resizeHandler = null; }
   const data = getCache();
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
-  const weekSchedules = data.schedules.filter(s => s.date >= weekStart && s.date <= getWeekDates(weekStart)[6]);
-  const ctx = buildContext(data.staffs, weekSchedules, projectById);
+  const { start, end } = windowRange(mode, anchor);
+  const windowSchedules = data.schedules.filter(s => s.date >= start && s.date <= end);
+  const ctx = buildContext(data.staffs, windowSchedules, projectById);
 
   container.innerHTML = '';
   const bar = document.createElement('div');
   bar.className = 'cal-bar';
+
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  [['day', '日'], ['week', '周'], ['month', '月']].forEach(([key, text]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = text;
+    b.classList.toggle('active', key === mode);
+    b.onclick = () => {
+      if (key === mode) return;
+      const center = windowCenter(mode, anchor);
+      mode = key;
+      anchor = anchorStart(mode, center);
+      renderAnalysis(container);
+    };
+    seg.appendChild(b);
+  });
+
   const group = document.createElement('div');
   group.className = 'cal-bar-group';
-  const prev = btn('上周', false, ICON_PREV), next = btn('下周', false, ICON_NEXT, true);
+  const prev = btn('上一个', false, ICON_PREV), next = btn('下一个', false, ICON_NEXT, true);
   const label = document.createElement('span');
   label.className = 'week-label';
-  label.textContent = `${weekStart} ~ ${getWeekDates(weekStart)[6]}`;
-  const today = btn('今天');
+  label.textContent = windowLabel(mode, anchor);
+  const today = btn(mode === 'day' ? '今天' : mode === 'week' ? '本周' : '本月');
   group.append(prev, label, next, today);
-  bar.append(group);
+  bar.append(seg, group);
   container.appendChild(bar);
-  prev.onclick = () => { weekStart = shift(weekStart, -7); renderAnalysis(container); };
-  next.onclick = () => { weekStart = shift(weekStart, 7); renderAnalysis(container); };
-  today.onclick = () => { weekStart = getWeekStart(todayStr()); renderAnalysis(container); };
+  prev.onclick = () => { anchor = shiftAnchor(mode, anchor, -1); renderAnalysis(container); };
+  next.onclick = () => { anchor = shiftAnchor(mode, anchor, 1); renderAnalysis(container); };
+  today.onclick = () => { anchor = anchorStart(mode, todayStr()); renderAnalysis(container); };
 
   const activeStaffs = data.staffs.filter(s => s.status !== 'left');
-  const participants = new Set(weekSchedules.flatMap(s => s.staffIds)).size;
-  const overCount = activeStaffs.filter(s => (ctx.weeklyFatigue.get(s.id) ?? 0) > s.maxWeeklyFatigue).length;
+  const participants = new Set(windowSchedules.flatMap(s => s.staffIds)).size;
   const statRow = document.createElement('div');
   statRow.className = 'stat-row';
-  statRow.innerHTML = `
-    <div class="stat"><div class="stat-value">${weekSchedules.length}</div><div class="stat-label">本周班次</div></div>
-    <div class="stat"><div class="stat-value">${participants}</div><div class="stat-label">参与人员</div></div>
-    <div class="stat"><div class="stat-value"${overCount ? ' style="color:#dc2626"' : ''}>${overCount}</div><div class="stat-label">疲劳超限</div></div>`;
+  if (mode === 'week') {
+    const overCount = activeStaffs.filter(s => (ctx.weeklyFatigue.get(s.id) ?? 0) > s.maxWeeklyFatigue).length;
+    statRow.innerHTML = `
+      <div class="stat"><div class="stat-value">${windowSchedules.length}</div><div class="stat-label">本周班次</div></div>
+      <div class="stat"><div class="stat-value">${participants}</div><div class="stat-label">参与人员</div></div>
+      <div class="stat"><div class="stat-value"${overCount ? ' style="color:#dc2626"' : ''}>${overCount}</div><div class="stat-label">疲劳超限</div></div>`;
+  } else {
+    statRow.innerHTML = `
+      <div class="stat"><div class="stat-value">${windowSchedules.length}</div><div class="stat-label">${mode === 'day' ? '本日班次' : '本月班次'}</div></div>
+      <div class="stat"><div class="stat-value">${participants}</div><div class="stat-label">参与人员</div></div>`;
+  }
   container.appendChild(statRow);
 
   const card = document.createElement('div');
@@ -78,7 +110,7 @@ export async function renderAnalysis(container) {
     canvas.height = Math.round(ch * dpr);
     const g = canvas.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw(canvas, data.staffs, ctx);
+    draw(canvas, data.staffs, ctx, mode === 'week');
   };
   fit();
   requestAnimationFrame(fit);
@@ -86,11 +118,45 @@ export async function renderAnalysis(container) {
   window.addEventListener('resize', resizeHandler);
 }
 
-function shift(dateStr, days) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + days);
-  return getWeekStart(toDateStr(dt));
+function addDays(dateStr, n) {
+  const dt = parseDate(dateStr);
+  dt.setDate(dt.getDate() + n);
+  return toDateStr(dt);
+}
+
+// 某日期所属窗口的首日：日=当天 / 周=周一起 / 月=当月 1 号（yyyy-mm-01）
+function anchorStart(m, dateStr) {
+  if (m === 'day') return dateStr;
+  if (m === 'week') return getWeekStart(dateStr);
+  return dateStr.slice(0, 7) + '-01';
+}
+
+function shiftAnchor(m, a, dir) {
+  if (m === 'day') return addDays(a, dir);
+  if (m === 'week') return addDays(a, dir * 7);
+  const [y, mo] = a.slice(0, 7).split('-').map(Number);
+  const dt = new Date(y, mo - 1 + dir, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+// 窗口视觉中心日（用于跨粒度换算保持阅读位置）：日=当天 / 周=周四 / 月=15 号
+function windowCenter(m, a) {
+  if (m === 'day') return a;
+  if (m === 'week') return addDays(a, 3);
+  return addDays(a, 14);
+}
+
+function windowRange(m, a) {
+  if (m === 'day') return { start: a, end: a };
+  if (m === 'week') return { start: a, end: addDays(a, 6) };
+  const [y, mo] = a.slice(0, 7).split('-').map(Number);
+  return { start: a, end: toDateStr(new Date(y, mo, 0)) };
+}
+
+function windowLabel(m, a) {
+  if (m === 'day') return `${a} · ${weekdayLabel(a)}`;
+  if (m === 'week') return getWeekLabel(a);
+  return a.slice(0, 7);
 }
 
 function roundedBar(g, x, y, w, h, r) {
@@ -105,7 +171,7 @@ function roundedBar(g, x, y, w, h, r) {
   g.fill();
 }
 
-function draw(canvas, staffs, ctx) {
+function draw(canvas, staffs, ctx, checkLimit) {
   const g = canvas.getContext('2d');
   const W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
   g.clearRect(0, 0, W, H);
@@ -146,7 +212,7 @@ function draw(canvas, staffs, ctx) {
   sorted.forEach((s, i) => {
     const cx = pad.left + groupW * i + groupW / 2;
     const fatigue = ctx.weeklyFatigue.get(s.id) ?? 0;
-    const over = fatigue > s.maxWeeklyFatigue;
+    const over = checkLimit && fatigue > s.maxWeeklyFatigue;
     // 劳累柱（黄渐变，圆角）——全图唯一柱，高度即积分
     const fh = (fatigue / axisMax) * innerH;
     const barTop = pad.top + innerH - fh;

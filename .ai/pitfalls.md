@@ -264,3 +264,11 @@
 - **根因**：同一班次的加人约束共有四个入口——①排班分配弹窗（scheduleDialog）②拖拽（dropStaff）③闪电单班次填充（smartFillOne）④全局智能排班（fillSchedule）。③④②在历次迭代中陆续补齐了「满员拦截」，唯独弹窗改造加「进度条 + 满员态」时漏了封口：加满员绿条时只当「提示」写，没想到它旁边候选行仍在渲染——filterCandidate 只拦硬性规则（疲劳/黑名单/当日上限），**不拦名额**，名额判断是各入口自己的事
 - **解决**：scheduleDialog 满员分支只渲染 `asg-full` 绿条、候选行整体不渲染（无「＋ 添加」路径）；移除一人后 renderBody() 重算即恢复（先减后加的人员调整不受影响）。卡片侧满员底部不渲染「已满」容量行（`.full` 绿框视觉已表达）。验收核对基准：改「名额类约束」后 grep 出该班次全部可变入口，逐个验证满员态行为一致
 - **启示**：业务约束的「拦截点」≠「提示点」——弹窗里加状态提示（满员绿条/已满徽章）只表达了 UI 说明，不代表该弹窗不再产生数据；任何能写库的入口（弹窗按钮/拖拽/自动填充/导入）都必须自带约束判断，验收反向提问：「是否存在一条路径能违反此约束？」（本次正是第 4 个入口——弹窗——漏判）
+
+## 33. Playwright 注入测试数据的「备份」不能放页面 JS 变量：navigation/reload 即丢失，原数据被覆盖后只能反推重建
+
+- **报错**：注入测试班次后 reload 验证，返回去还原数据时 `window.__backup` 已是 undefined——原 localStorage 数据已被测试数据覆盖且无备份可还
+- **场景**：Playwright 冒烟需要造数据（覆盖式写入 `is_sched:projects` 等），注入前把原值备份在 `window.__backup = localStorage.getItem(...)`，随后 `page.goto(url)` 触发页面 reload
+- **根因**：`window.*` 是**页面 JS 运行时变量**，reload 销毁整页 JS 上下文，备份随之消失；localStorage 里的测试数据却已落盘。备份与注入同一次 evaluate 完成时最易中招——注入后往往需要 reload（db 内存 Map 不感知 localStorage 直写，见 #13）才能让应用读到测试数据，而 reload 恰好杀死备份
+- **解决**：备份写入 **localStorage 临时 key**（如 `__backup_sched`）而非 window 变量——localStorage 跨 reload 存活，验证完读回还原再删 key；或注入与验证全程不 reload（用 storage 事件/内存直改不可行时，改为先还原再 reload）。还原时若备份已丢，从**引用关系反推**（staffs 的 allowedProjects/schedules.projectId 指向的 id 必须存在，如本项目任务 id 恰为 P1/P2 语义 id，可重建同名同 id 记录保住引用）
+- **启示**：任何「覆盖真实数据前先备份」的临时状态，备份介质必须与数据的生命周期一致（同在 localStorage）；跨 reload 的临时值一律走 localStorage 临时 key，页面变量只活一个页面周期

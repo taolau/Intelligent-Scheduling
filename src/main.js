@@ -1,9 +1,9 @@
 import { injectGlobalStyles } from './ui/theme.js';
 injectGlobalStyles();
 
-import { renderCalendar } from './views/calendar.js';
+import { renderCalendar, resetCalendarView } from './views/calendar.js';
 import { renderConfig } from './views/config.js';
-import { renderAnalysis } from './views/analysis.js';
+import { renderAnalysis, resetAnalysisView } from './views/analysis.js';
 import { loadAll, exportJSON, importJSON } from './data/store.js';
 import { KEYS } from './data/keys.js';
 import { openModal } from './ui/modal.js';
@@ -56,8 +56,15 @@ function setActive(key) {
   });
 }
 
+// 每次点击侧栏菜单都重置为默认视图（周历本周+总览 / 配置人员 tab / 分析周+本周），不再暂留历史状态
+function resetViewDefaults(key) {
+  if (key === 'calendar') resetCalendarView();
+  else if (key === 'config') localStorage.removeItem(KEYS.configTab);
+  else if (key === 'analysis') resetAnalysisView();
+}
+
 async function switchView(key) {
-  if (key === current) return;
+  resetViewDefaults(key);
   current = key;
   setActive(key);
   const view = document.querySelector('#view');

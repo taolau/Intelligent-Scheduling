@@ -6,6 +6,8 @@ import { createTimePicker } from '../ui/timepicker.js';
 import { getCache, saveProject, saveStaff, getSettings, saveSettings, removeStaff, removeProject } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
+import { exportTaskViewImage } from '../ui/exportImage.js';
+import { toDateStr } from '../core/week.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS } from '../data/model.js';
 import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
 
@@ -20,6 +22,10 @@ const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>';
 const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
+const ICON_VIEW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M19 12H5m0 0l6 6m-6-6l6-6"/></svg>';
+const EFFORT_WORDS = ['', '轻松', '中等', '高强度'];
+const SLOT_ORDER = new Map(SLOT_LABELS.map((l, i) => [l, i]));
 
 const TAB_DEFS = [
   { key: 'staff', label: '人员管理', render: renderStaffs },
@@ -587,13 +593,14 @@ async function renderProjects(head, scroll) {
   const addBtn = btn('新增任务', false, ICON_PLUS);
   const importBtn = btn('Excel 导入', false, ICON_UPLOAD);
   const exportBtn = btn('Excel 导出', false, ICON_DOWNLOAD);
+  const viewBtn = btn('任务视图', false, ICON_VIEW);
   addBtn.onclick = () => editProjectDialog();
   importBtn.onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
   exportBtn.onclick = () => exportProjects();
-  actions.append(search, addBtn, importBtn, exportBtn);
+  viewBtn.onclick = () => renderProjectView(head, scroll, projects);
+  actions.append(search, addBtn, importBtn, exportBtn, viewBtn);
   head.appendChild(actions);
 
-  const slotOrder = new Map(SLOT_LABELS.map((l, i) => [l, i]));
   const grid = document.createElement('div');
   grid.className = 'card-grid';
   if (!projects.length) {
@@ -603,7 +610,7 @@ async function renderProjects(head, scroll) {
   for (const p of projects) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
     const slots = [...p.slots]
-      .sort((a, b) => slotOrder.get(a.label) - slotOrder.get(b.label))
+      .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
       .map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">—</span>';
     const timeRange = p.timeRange
       ? `${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`
@@ -657,6 +664,98 @@ async function renderProjects(head, scroll) {
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
   setupNameFilter(search, grid, '任务');
+}
+
+// —— 任务视图（任务说明清单）：任务 tab 就地切换的纯展示态，供导出图片给执行人员看每个任务要做什么 ——
+function renderProjectView(head, scroll, projects) {
+  head.innerHTML = '';
+  scroll.innerHTML = '';
+  const actives = projects.filter(p => p.active);
+  const hidden = projects.length - actives.length;
+
+  const backBtn = btn('返回卡片', false, ICON_BACK);
+  backBtn.onclick = () => renderProjects(head, scroll);
+  const meta = document.createElement('span');
+  meta.className = 'cfg-view-meta';
+  meta.textContent = `任务说明 · 共 ${actives.length} 项${hidden ? `，已隐藏停用 ${hidden} 项` : ''}`;
+  head.append(backBtn, meta);
+
+  if (actives.length) {
+    const imgBtn = btn('导出图片', false, ICON_DOWNLOAD);
+    imgBtn.style.marginLeft = 'auto';
+    imgBtn.onclick = async () => {
+      imgBtn.disabled = true;
+      showToast('正在生成图片…');
+      const date = toDateStr(new Date());
+      try {
+        await exportTaskViewImage({
+          list: buildTaskViewList(actives),
+          title: '任务说明',
+          metaText: `共 ${actives.length} 项`,
+          filename: `Tasks-任务说明图-${date}.png`,
+        });
+        showToast('任务说明图已导出', 'success');
+      } catch (e) {
+        showToast(`导出失败：${e.message}`, 'error');
+      } finally {
+        imgBtn.disabled = false;
+      }
+    };
+    head.appendChild(imgBtn);
+  }
+
+  const content = actives.length
+    ? buildTaskViewList(actives)
+    : (() => {
+        const empty = document.createElement('div');
+        empty.className = 'grid-empty';
+        empty.textContent = projects.length ? '没有启用中的任务，停用任务不进入视图' : '暂无任务，点击「新增任务」添加';
+        return empty;
+      })();
+  scroll.appendChild(wrapPanel(content));
+}
+
+function buildTaskViewList(projects) {
+  const list = document.createElement('div');
+  list.className = 'tview-list';
+  for (const p of projects) list.appendChild(buildTaskViewItem(p));
+  return list;
+}
+
+function buildTaskViewItem(p) {
+  const item = document.createElement('div');
+  item.className = 'tview-item';
+  const name = document.createElement('div');
+  name.className = 'tview-name';
+  name.textContent = p.name;
+  const meta = document.createElement('div');
+  meta.className = 'tview-meta';
+  meta.innerHTML = taskViewMetaHTML(p);
+  const desc = document.createElement('div');
+  desc.className = 'tview-desc';
+  if (p.description && p.description.trim()) {
+    desc.textContent = p.description.trim();
+  } else {
+    desc.classList.add('empty');
+    desc.textContent = '未填写说明';
+  }
+  item.append(name, meta, desc);
+  return item;
+}
+
+// 元信息行：文本段与时段 chip 分离成 flex 项（间距统一），文本段内片段用「·」连接
+function taskViewMetaHTML(p) {
+  const bits = [`<span class="tv-t">${ICON_FIRE.repeat(p.fatigueScore)} ${EFFORT_WORDS[p.fatigueScore] ?? ''} · ${p.requiredCapacity} 人/班</span>`];
+  const slots = [...p.slots]
+    .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
+    .map(s => `<span class="tag">${esc(s.label)}</span>`);
+  bits.push(...slots);
+  const right = [
+    p.timeRange ? `${esc(p.timeRange.start)}–${esc(p.timeRange.end)}` : '',
+    p.weekDays.length ? `每周${[...p.weekDays].sort((a, b) => a - b).map(d => '日一二三四五六'[d]).join('、')}` : '',
+  ].filter(Boolean).join(' · ');
+  if (right) bits.push(`<span class="tv-t">${right}</span>`);
+  return bits.join('');
 }
 
 async function editProjectDialog(project) {

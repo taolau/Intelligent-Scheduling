@@ -470,6 +470,17 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .cfg-op-btns { display:flex; align-items:center; gap:6px; }
 .grid-empty { padding:28px; text-align:center; color:#9b91a7; font-size:14px; }
 
+/* ===== 任务视图（任务说明清单：名称+说明为主，供导出图片）===== */
+.cfg-view-meta { font-size:13px; color:#6a6178; }
+.tview-list { display:flex; flex-direction:column; }
+.tview-item { padding:15px 6px 16px; border-bottom:1px solid #f1ecf5; }
+.tview-item:last-child { border-bottom:none; }
+.tview-name { font-size:17px; font-weight:700; color:#1e1926; line-height:1.4; word-break:break-all; }
+.tview-meta { display:flex; align-items:center; flex-wrap:wrap; gap:9px; margin-top:7px; font-size:13px; color:#6a6178; }
+.tview-meta .tag { font-size:12px; }
+.tview-desc { margin-top:8px; font-size:15px; color:#3d3547; line-height:1.8; white-space:pre-wrap; word-break:break-all; }
+.tview-desc.empty { color:#b0a6bc; }
+
 /* ===== 系统设置页 ===== */
 .cfg-split { display:flex; gap:12px; height:100%; min-height:0; }
 .set-pane { flex:1; min-width:0; height:100%; display:flex; flex-direction:column; overflow:hidden; }
