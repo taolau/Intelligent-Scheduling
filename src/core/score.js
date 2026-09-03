@@ -1,15 +1,15 @@
 import { DEFAULT_SETTINGS } from '../data/model.js';
 
-export function computeTeamAvg(staffs, weeklyFatigue) {
+export function computeTeamAvg(staffs, fatigueMap) {
   const active = staffs.filter(s => s.status === 'active');
   if (active.length === 0) return 0;
-  const sum = active.reduce((acc, s) => acc + (weeklyFatigue.get(s.id) ?? 0), 0);
+  const sum = active.reduce((acc, s) => acc + (fatigueMap.get(s.id) ?? 0), 0);
   return sum / active.length;
 }
 
 export function scoreCandidate(staff, schedule, projectById, ctx) {
   const breakdown = [];
-  const currentFatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
+  const currentFatigue = ctx.fatigueWindow?.get(staff.id) ?? 0;
   const preferredBonus = ctx.settings?.preferredBonus ?? DEFAULT_SETTINGS.preferredBonus;
   const balanceFactor = ctx.settings?.balanceFactor ?? DEFAULT_SETTINGS.balanceFactor;
 

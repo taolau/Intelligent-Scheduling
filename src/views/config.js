@@ -974,7 +974,9 @@ const SET_GROUPS = [
       { key: 'preferredBonus', name: '擅长加分', min: 1,
         hint: '命中此人所擅长项目时加的分（擅长名单带原因，在人员编辑弹窗维护）。分值越大，越优先用熟练的人。' },
       { key: 'balanceFactor', name: '均衡系数', min: 1,
-        hint: '均衡加分 = (团队平均周疲劳 − 本人本周疲劳) × 系数，可为负。系数越大越优先排本周干得少的人；越小越偏向熟手优先。' },
+        hint: '均衡加分 = (团队窗口平均 − 本人窗口疲劳) × 系数，可为负。窗口见「公平参考窗口」。系数越大越优先排窗口内干得少的人；越小越偏向熟手优先。' },
+      { key: 'balanceWindowDays', name: '公平参考窗口（天）', min: 7, max: 365,
+        hint: '均衡加分只参考「今天回看 N 天」内已排班次（未来已排定的也算）。默认 90 ≈ 三个月：谁近三个月干得少谁优先轮上；窗口滑出后旧账自动淡出，不会让「某月被集中排班」变成永久负债。' },
     ],
   },
   {
@@ -1003,19 +1005,21 @@ const RULE_SECS = [
   },
   {
     h: '推荐给谁：打分排序',
-    formula: '总分 = 擅长加分 + (团队平均周疲劳 − 本人本周疲劳) × 均衡系数',
+    formula: '总分 = 擅长加分 + (团队窗口平均 − 本人窗口疲劳) × 均衡系数',
     items: [
-      '低于平均得正分 → 优先排（干得少的先上）；高于平均得负分 → 往后排（干得多的先歇）',
+      '低于平均得正分 → 优先排（近期干得少的先上）；高于平均得负分 → 往后排（干得多的先歇）',
+      '窗口 = 今天回看 N 天内的已排班次（未来已排定的也算），N 即左侧「公平参考窗口」；窗口外旧账不进均衡',
       '团队平均只统计参与状态人员；新入按平均计（不加不减），休假 / 已退出不计入',
-      '每分配一人立即刷新其本周疲劳，后续班次实时感知——避免同一人反复填坑',
+      '每分配一人立即刷新其窗口疲劳，后续班次实时感知——避免同一人反复填坑',
     ],
   },
   {
     h: '疲劳与高强度怎么累计',
     items: [
       '劳累指数 = 任务自带的辛苦分：1 轻松 / 2 中等 / 3 高强度',
-      '本周劳累积分 = 本周（周一 ~ 周日）已排班次的劳累指数之和，超过个人「周疲劳上限」即超限',
-      '高强度次数 = 本周排过的 3 分班次数，受个人「高强度次数上限」约束',
+      '本周劳累积分 = 该班次所在自然周（周一 ~ 周日，滚动窗口）已排班次的劳累指数之和，超过个人「周疲劳上限」即超限——上周干得多不影响本周判定',
+      '高强度次数 = 该班次所在周内排过的 3 分班次数，受个人「高强度次数上限」约束（同滚动周）',
+      '「周上限」是单周透支保护；「公平参考窗口」是长期轮换标尺，两者分工互不干扰',
     ],
   },
   {
@@ -1080,6 +1084,7 @@ function renderSettings(head, scroll) {
       input.className = 'input set-num';
       input.type = 'number';
       input.min = it.min;
+      if (it.max !== undefined) input.max = it.max;
       input.value = s[it.key];
       inputs[it.key] = input;
       main.append(nm, input);
@@ -1111,7 +1116,7 @@ function renderSettings(head, scroll) {
     SET_GROUPS.flatMap(g => g.items).forEach(it => {
       const n = Number(inputs[it.key].value);
       draft[it.key] = inputs[it.key].value.trim() !== '' && Number.isFinite(n)
-        ? Math.max(it.min, n)
+        ? Math.min(it.max ?? Infinity, Math.max(it.min, n))
         : DEFAULT_SETTINGS[it.key];
     });
     saveSettings(draft);

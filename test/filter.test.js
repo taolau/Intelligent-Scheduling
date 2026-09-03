@@ -8,8 +8,9 @@ const P102 = createProject({ id: 'P102', name: '浇花', fatigueScore: 1, slots:
 const P103 = createProject({ id: 'P103', name: '巡逻', fatigueScore: 1, slots: [{ label: '晚' }] });
 const projectById = { P101, P102, P103 };
 
+// slot 日期 2026-08-24 恰为周一 → 周键 = 'S1|2026-08-24'
 function base() {
-  return { schedules: [], weeklyFatigue: new Map(), heavyCounts: new Map(),
+  return { schedules: [], fatigueByWeek: new Map(), heavyByWeek: new Map(),
            dailyCounts: new Map(), slotCounts: new Map(), settings: { ...DEFAULT_SETTINGS } };
 }
 
@@ -60,7 +61,7 @@ test('新入可排非高强度', () => {
 test('周疲劳超限拒绝', () => {
   const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
   const ctx = base();
-  ctx.weeklyFatigue.set('S1', 3);
+  ctx.fatigueByWeek.set('S1|2026-08-24', 3);
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.equal(r.ok, false);
 });
@@ -68,8 +69,35 @@ test('周疲劳超限拒绝', () => {
 test('高强度次数超限拒绝', () => {
   const s = createStaff({ id: 'S1', name: '张三', maxHeavyTaskCount: 1 });
   const ctx = base();
-  ctx.heavyCounts.set('S1', 1);
+  ctx.heavyByWeek.set('S1|2026-08-24', 1);
   const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, false);
+});
+
+test('滚动周窗口：上周已超限不影响本周判定（旧全量聚合 bug 回归）', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3, allowedProjects: ['P101'] });
+  const ctx = base();
+  ctx.fatigueByWeek.set('S1|2026-08-17', 4); // 上周累计 4 > 上限，但属于过去周窗口
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, true);
+});
+
+test('滚动周窗口：本周累计触发上限', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
+  const ctx = base();
+  ctx.fatigueByWeek.set('S1|2026-08-24', 2); // 本周已 2，P101 疲劳 3 → 加入后 5 > 3
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('将超限')));
+});
+
+test('滚动周窗口：跨月自然周按周首日归属同键', () => {
+  // 班次在 2026-09-01（周二，属 8/31 起的自然周）→ 查 8/31 周键
+  const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
+  const ctx = base();
+  ctx.fatigueByWeek.set('S1|2026-08-31', 3); // 8/31~9/6 周累计已 3
+  const slotSep = { date: '2026-09-01', projectId: 'P101', slotLabel: '早' };
+  const r = filterCandidate(s, slotSep, projectById, ctx);
   assert.equal(r.ok, false);
 });
 
@@ -121,7 +149,7 @@ test('全部通过', () => {
 test('疲劳文案：当前已超上限（4/3）说「已超限」不说「将超限」', () => {
   const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
   const ctx = base();
-  ctx.weeklyFatigue.set('S1', 4);
+  ctx.fatigueByWeek.set('S1|2026-08-24', 4);
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.ok(r.reasons.some(x => x.includes('已超限')));
   assert.ok(!r.reasons.some(x => x.includes('将超限')));
@@ -130,7 +158,7 @@ test('疲劳文案：当前已超上限（4/3）说「已超限」不说「将�
 test('疲劳文案：恰满上限（3/3）说「已达上限」', () => {
   const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
   const ctx = base();
-  ctx.weeklyFatigue.set('S1', 3);
+  ctx.fatigueByWeek.set('S1|2026-08-24', 3);
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.ok(r.reasons.some(x => x.includes('已达上限')));
   assert.ok(!r.reasons.some(x => x.includes('超限')));
@@ -139,7 +167,7 @@ test('疲劳文案：恰满上限（3/3）说「已达上限」', () => {
 test('疲劳文案：未超但加入后超（2/3 + 高强度3）说「将超限」', () => {
   const s = createStaff({ id: 'S1', name: '张三', maxWeeklyFatigue: 3 });
   const ctx = base();
-  ctx.weeklyFatigue.set('S1', 2);
+  ctx.fatigueByWeek.set('S1|2026-08-24', 2);
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.ok(r.reasons.some(x => x.includes('将超限')));
   assert.ok(!r.reasons.some(x => x.includes('已超限')));
@@ -148,13 +176,13 @@ test('疲劳文案：未超但加入后超（2/3 + 高强度3）说「将超限�
 test('高强度次数文案：已超（2/1）与恰满（1/1）区分', () => {
   const s1 = createStaff({ id: 'S1', name: '张三', maxHeavyTaskCount: 1 });
   const ctx1 = base();
-  ctx1.heavyCounts.set('S1', 2);
+  ctx1.heavyByWeek.set('S1|2026-08-24', 2);
   const r1 = filterCandidate(s1, slot, projectById, ctx1);
   assert.ok(r1.reasons.some(x => x.includes('已超限')));
 
   const s2 = createStaff({ id: 'S2', name: '李四', maxHeavyTaskCount: 1 });
   const ctx2 = base();
-  ctx2.heavyCounts.set('S2', 1);
+  ctx2.heavyByWeek.set('S2|2026-08-24', 1);
   const r2 = filterCandidate(s2, slot, projectById, ctx2);
   assert.ok(r2.reasons.some(x => x.includes('已达上限')));
   assert.ok(!r2.reasons.some(x => x.includes('已超限')));

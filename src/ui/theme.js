@@ -344,6 +344,21 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-col { display:flex; flex-direction:column; gap:8px; min-width:0;
   background:#fcfafd; border:1px solid #eae5f0; border-radius:10px; padding:8px; }
 
+/* ===== 月视图：周面板纵向堆叠 + 非本月灰显 + chip 月积分小字 ===== */
+.cal-month-stack { flex:1; min-height:0; overflow-y:auto; display:flex;
+  flex-direction:column; gap:8px; padding-bottom:6px; }
+.cal-month-sep { display:flex; align-items:baseline; gap:8px; padding:4px 2px 0;
+  font-size:12px; color:#6a6178; }
+.cal-month-sep b { color:#5a1d78; font-weight:600; }
+.cal-month-panel .cal-grid { flex:none; overflow:visible; }
+.cal-out-month { background:#f7f4fa; }
+.cal-out-month .cal-date { background:#f1eef5; color:#a79cae; }
+.cal-out-month .cal-date b { color:#b8adc1; }
+.cal-out-month .cal-slot-card { opacity:.6; }
+.cal-out-month .cal-add-day { background:#faf8fc; }
+.cal-mfat { font-style:normal; font-size:10px; color:#8b7f97; margin-left:4px;
+  background:#f0eaf5; border-radius:6px; padding:0 4px; line-height:14px; }
+
 .cal-date { position:relative; background:#f7f1fa; color:#380c4a; border-radius:8px;
   padding:7px 6px; text-align:center; font-weight:600; font-size:13px; }
 .cal-date b { display:block; font-size:11px; font-weight:500; color:#6a6178; margin-top:2px; }

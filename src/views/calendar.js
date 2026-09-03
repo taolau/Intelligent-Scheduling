@@ -2,7 +2,7 @@ import { expandWeeks } from '../core/expand.js';
 import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
-import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayLabel } from '../core/week.js';
+import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayLabel, monthKey, shiftMonth, weeksCovering, inMonth } from '../core/week.js';
 import { getCache, saveSchedule, getSettings, removeSchedule } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
 import { createSchedule, SLOT_LABELS } from '../data/model.js';
@@ -16,6 +16,8 @@ import { field, setError } from '../ui/fields.js';
 import { ICON_FIRE } from '../ui/icons.js';
 
 let currentWeekStart = getWeekStart(todayStr());
+let timeScale = 'week'; // 'week' 单周 | 'month' 自然月（月锚 monthAnchor = 'YYYY-MM'）
+let monthAnchor = todayStr().slice(0, 7);
 let data = { projects: [], staffs: [], schedules: [] };
 let ctx = null;
 
@@ -31,16 +33,25 @@ try {
   }
 } catch { /* 持久化状态损坏则忽略，回退总览 */ }
 
+try {
+  timeScale = JSON.parse(localStorage.getItem(KEYS.calScale) ?? 'null') === 'month' ? 'month' : 'week';
+} catch { /* 损坏则忽略，回退周粒度 */ }
+
 function persistViewState() {
-  try { localStorage.setItem(KEYS.calView, JSON.stringify({ mode: viewMode, id: viewTargetId })); } catch { /* 存储不可用时静默 */ }
+  try {
+    localStorage.setItem(KEYS.calView, JSON.stringify({ mode: viewMode, id: viewTargetId }));
+    localStorage.setItem(KEYS.calScale, JSON.stringify(timeScale));
+  } catch { /* 存储不可用时静默 */ }
 }
 
-// 侧栏菜单进入时重置为默认视图：本周 + 总览，维度记忆一并清除
+// 侧栏菜单进入时重置为默认视图：周粒度 + 本周 + 总览，维度/粒度记忆一并清除
 export function resetCalendarView() {
   currentWeekStart = getWeekStart(todayStr());
+  timeScale = 'week';
+  monthAnchor = todayStr().slice(0, 7);
   viewMode = 'overview';
   viewTargetId = '';
-  try { localStorage.removeItem(KEYS.calView); } catch { /* 忽略 */ }
+  try { localStorage.removeItem(KEYS.calView); localStorage.removeItem(KEYS.calScale); } catch { /* 忽略 */ }
 }
 
 const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M15 18l-6-6 6-6"/></svg>';
@@ -69,6 +80,23 @@ export async function renderCalendar(container) {
   left.className = 'cal-bar-group';
   const right = document.createElement('div');
   right.className = 'cal-bar-group';
+
+  // 粒度切换：周（单周精细）/ 月（整月统筹，自然月内面板纵向堆叠）
+  const scaleSeg = document.createElement('div');
+  scaleSeg.className = 'seg seg-sm';
+  for (const [scale, scaleLabel] of [['week', '周'], ['month', '月']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = scaleLabel;
+    if (timeScale === scale) b.classList.add('active');
+    b.onclick = () => {
+      if (timeScale === scale) return;
+      switchScale(scale);
+      renderCalendar(container);
+    };
+    scaleSeg.appendChild(b);
+  }
+  left.appendChild(scaleSeg);
 
   // 维度切换：总览 / 项目 / 人员
   const seg = document.createElement('div');
@@ -109,11 +137,13 @@ export async function renderCalendar(container) {
     left.appendChild(sel);
   }
 
-  const prev = btn('上周', false, false, ICON_PREV), next = btn('下周', false, false, ICON_NEXT, true);
+  const monthScale = timeScale === 'month';
+  const prev = btn(monthScale ? '上月' : '上周', false, false, ICON_PREV);
+  const next = btn(monthScale ? '下月' : '下周', false, false, ICON_NEXT, true);
   const label = document.createElement('span');
   label.className = 'week-label';
-  label.textContent = getWeekLabel(currentWeekStart);
-  const todayBtn = btn('今天');
+  label.textContent = monthScale ? monthAnchor : getWeekLabel(currentWeekStart);
+  const todayBtn = btn(monthScale ? '本月' : '今天');
   const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK);
   // 合并导出入口：一个「导出」按钮 hover 下拉出 Excel/图片两项（纯 CSS hover 显隐，无需 JS 管理开合）
   const exportWrap = document.createElement('div');
@@ -130,6 +160,10 @@ export async function renderCalendar(container) {
   imgItem.type = 'button';
   imgItem.className = 'cal-export-item';
   imgItem.innerHTML = `${ICON_IMAGE}<span>导出图片</span>`;
+  if (monthScale) {
+    imgItem.disabled = true;
+    imgItem.title = '月视图暂不支持导出图片，请切到周视图';
+  }
   exportMenu.append(excelItem, imgItem);
   exportWrap.append(exportBtn, exportMenu);
   left.append(prev, label, next, todayBtn);
@@ -139,14 +173,19 @@ export async function renderCalendar(container) {
   bar.append(left, right);
   container.appendChild(bar);
 
-  prev.onclick = () => shiftWeek(-7);
-  next.onclick = () => shiftWeek(7);
-  todayBtn.onclick = () => { currentWeekStart = getWeekStart(todayStr()); renderCalendar(container); };
+  prev.onclick = () => navShift(-1);
+  next.onclick = () => navShift(1);
+  todayBtn.onclick = () => gotoNow();
   autoBtn.onclick = () => smartFill();
   bulkBtn.onclick = () => bulkPlanDialog();
-  excelItem.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, currentWeekStart);
+  excelItem.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, timeScale === 'month' ? weeksCovering(monthAnchor)[0] : currentWeekStart);
   imgItem.onclick = async () => {
-    if (!grid.isConnected) {
+    if (timeScale === 'month') {
+      showToast('月视图暂不支持导出图片，请切到周视图导出', 'info');
+      return;
+    }
+    const grid = container.querySelector('.cal-grid');
+    if (!grid) {
       showToast('当前视图暂无班次，无可导出的排班图', 'error');
       return;
     }
@@ -165,48 +204,123 @@ export async function renderCalendar(container) {
     }
   };
 
-  const grid = document.createElement('div');
-  grid.className = 'cal-grid';
-  const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  const dates = getWeekDates(currentWeekStart);
+  renderScaleView(container);
+}
+
+// 跨粒度切换保持阅读位置：周→月 = 浏览周周四所在月；月→周 = 浏览月 15 号所在周（不跳今天）
+function switchScale(next) {
+  if (next === 'month') {
+    const [y, m, d] = currentWeekStart.split('-').map(Number);
+    const thursday = new Date(y, m - 1, d);
+    thursday.setDate(thursday.getDate() + 3);
+    monthAnchor = monthKey(toDateStr(thursday));
+  } else {
+    currentWeekStart = getWeekStart(`${monthAnchor}-15`);
+  }
+  timeScale = next;
+  persistViewState();
+}
+
+function navShift(dir) {
+  if (timeScale === 'week') {
+    const [y, m, d] = currentWeekStart.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + dir * 7);
+    currentWeekStart = getWeekStart(toDateStr(dt));
+  } else {
+    monthAnchor = shiftMonth(monthAnchor, dir);
+  }
+  renderCalendar(document.querySelector('#view'));
+}
+
+function gotoNow() {
+  if (timeScale === 'week') currentWeekStart = getWeekStart(todayStr());
+  else monthAnchor = todayStr().slice(0, 7);
+  renderCalendar(document.querySelector('#view'));
+}
+
+// 内容渲染：周 = 单面板；月 = 覆盖整月的完整自然周面板纵向堆叠
+function renderScaleView(container) {
   const today = todayStr();
+  const weekStarts = timeScale === 'month' ? weeksCovering(monthAnchor) : [currentWeekStart];
+  const dateSet = new Set();
+  for (const ws of weekStarts) for (const d of getWeekDates(ws)) dateSet.add(d);
 
   // 维度过滤：项目=该任务全部班次；人员=该人已排入的班次（只读）
-  const dateSet = new Set(dates);
   let visible = data.schedules.filter(s => dateSet.has(s.date));
   let readOnly = false;
   if (viewMode === 'project') visible = visible.filter(s => s.projectId === viewTargetId);
   if (viewMode === 'staff') { visible = visible.filter(s => s.staffIds.includes(viewTargetId)); readOnly = true; }
 
-  // 过滤后整周为空 → 空态卡片（工具栏保留，可切回）
+  // 过滤后整窗为空 → 空态卡片（工具栏保留，可切回）
   if (viewMode !== 'overview' && visible.length === 0) {
+    const scope = timeScale === 'month' ? '本月' : '本周';
     const name = viewMode === 'project'
       ? data.projects.find(p => p.id === viewTargetId)?.name
       : data.staffs.find(s => s.id === viewTargetId)?.name;
     const empty = document.createElement('div');
     empty.className = 'cal-empty';
     empty.textContent = viewMode === 'project'
-      ? `本周暂无「${name}」的班次，可切换周或用「批量铺排」生成`
-      : `本周「${name}」暂无排班`;
+      ? `${scope}暂无「${name}」的班次，可切换周/月或用「批量铺排」生成`
+      : `${scope}「${name}」暂无排班`;
     container.appendChild(empty);
     return;
   }
 
-  // 维度摘要行（按当前浏览周现算，不依赖 ctx——ctx 周积分锚定首个班次所在周）
+  // 维度摘要行（按当前浏览窗口现算，不依赖 ctx——ctx 窗口轨以今天为锚）
   if (viewMode !== 'overview') container.appendChild(buildDimSummary(visible));
+
+  if (timeScale === 'week') {
+    buildGridPanel(container, currentWeekStart, visible, readOnly, null);
+    return;
+  }
+
+  // 月粒度：逐周面板 + 周范围分隔条；非本月日期灰显（班次照常显示与操作）
+  const outSet = new Set();
+  for (const ws of weekStarts) {
+    for (const d of getWeekDates(ws)) if (!inMonth(d, monthAnchor)) outSet.add(d);
+  }
+  const stack = document.createElement('div');
+  stack.className = 'cal-month-stack';
+  weekStarts.forEach((ws, i) => {
+    const end = getWeekDates(ws)[6];
+    const sep = document.createElement('div');
+    sep.className = 'cal-month-sep';
+    const no = document.createElement('b');
+    no.textContent = `第 ${i + 1} 周`;
+    const range = document.createElement('span');
+    range.textContent = `${ws} ~ ${end}`;
+    sep.append(no, range);
+    const panel = document.createElement('div');
+    panel.className = 'cal-month-panel';
+    const panelScheds = visible.filter(s => s.date >= ws && s.date <= end);
+    buildGridPanel(panel, ws, panelScheds, readOnly, outSet);
+    stack.append(sep, panel);
+  });
+  container.appendChild(stack);
+}
+
+// 单个完整自然周面板：列 = 周一~周日（date head），行 = 预置时段；月粒度传 outSet（灰显日）
+function buildGridPanel(host, weekStart, panelScheds, readOnly, outSet) {
+  const grid = document.createElement('div');
+  grid.className = 'cal-grid';
+  const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const dates = getWeekDates(weekStart);
+  const today = todayStr();
+  if (readOnly) grid.classList.add('readonly');
 
   // 按「日期|时段」预分组，避免逐格 O(n²) 过滤
   const byKey = new Map();
-  for (const s of visible) {
+  for (const s of panelScheds) {
     const key = `${s.date}|${s.slotLabel}`;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(s);
   }
-  if (readOnly) grid.classList.add('readonly');
 
   dates.forEach((d, i) => {
     const col = document.createElement('div');
     col.className = 'cal-col';
+    if (outSet?.has(d)) col.classList.add('cal-out-month');
 
     const head = document.createElement('div');
     head.className = `cal-date${d === today ? ' cal-today' : ''}`;
@@ -251,7 +365,8 @@ export async function renderCalendar(container) {
 
     grid.appendChild(col);
   });
-  container.appendChild(grid);
+  host.appendChild(grid);
+  return grid;
 }
 
 function buildDimSummary(visible) {
@@ -264,8 +379,9 @@ function buildDimSummary(visible) {
     const lack = Math.max(0, cap - filled);
     const name = document.createElement('b');
     name.textContent = p?.name ?? viewTargetId;
+    const scope = timeScale === 'month' ? '本月' : '本周';
     const info = document.createElement('span');
-    info.textContent = `本周 ${visible.length} 个班次 · 已排 ${filled}/${cap} 人`;
+    info.textContent = `${scope} ${visible.length} 个班次 · 已排 ${filled}/${cap} 人`;
     line.append(name, info);
     const tail = document.createElement('span');
     if (cap > 0 && lack === 0) { tail.className = 's-ok'; tail.textContent = '✓ 已满员'; }
@@ -290,7 +406,9 @@ function buildDimSummary(visible) {
       line.appendChild(tag);
     }
     const info = document.createElement('span');
-    info.textContent = `本周 ${visible.length} 个班次 · 疲劳 ${fatigue}/${st?.maxWeeklyFatigue ?? 0} · 高强度 ${heavy}/${st?.maxHeavyTaskCount ?? 0}`;
+    info.textContent = timeScale === 'month'
+      ? `本月 ${visible.length} 个班次 · 疲劳 ${fatigue} · 高强度 ${heavy}`
+      : `本周 ${visible.length} 个班次 · 疲劳 ${fatigue}/${st?.maxWeeklyFatigue ?? 0} · 高强度 ${heavy}/${st?.maxHeavyTaskCount ?? 0}`;
     line.appendChild(info);
   }
   return line;
@@ -347,9 +465,15 @@ function renderScheduleCard(sch, readOnly = false) {
   for (const sid of sch.staffIds) {
     const staff = data.staffs.find(s => s.id === sid);
     const chip = document.createElement('span');
-    chip.textContent = staff?.name ?? sid;
     chip.className = staffChipClass(staff, sch.date);
     chip.title = staffChipTitle(staff, sch.date);
+    chip.append(document.createTextNode(staff?.name ?? sid));
+    if (timeScale === 'month' && staff) {
+      const mf = document.createElement('i');
+      mf.className = 'cal-mfat';
+      mf.textContent = ctx.fatigueByMonth.get(`${sid}|${monthKey(sch.date)}`) ?? 0;
+      chip.appendChild(mf);
+    }
     if (!readOnly) { // 只读视图：不可拖拽，仍可点击人名进入替换弹窗
       enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
     }
@@ -384,6 +508,38 @@ function renderScheduleCard(sch, readOnly = false) {
   return card;
 }
 
+// ===== ctx 三轨计数统一增减（窗口/自然周/自然月 + daily/slot）=====
+// 视图层所有 ± 计数必须经此入口，手动散写漏轨会造成静默错乱
+function applyDelta(ctxObj, sid, sch, sign) {
+  const project = data.projects.find(p => p.id === sch.projectId);
+  if (!project) return;
+  const d = sign * project.fatigueScore;
+  if (sch.date >= (ctxObj.fatigueCutoff ?? '')) { // 未来与窗口内班次自然计入均衡轨
+    ctxObj.fatigueWindow.set(sid, Math.max(0, (ctxObj.fatigueWindow.get(sid) ?? 0) + d));
+  }
+  const wk = `${sid}|${getWeekStart(sch.date)}`;
+  const mk = `${sid}|${monthKey(sch.date)}`;
+  ctxObj.fatigueByWeek.set(wk, Math.max(0, (ctxObj.fatigueByWeek.get(wk) ?? 0) + d));
+  ctxObj.fatigueByMonth.set(mk, Math.max(0, (ctxObj.fatigueByMonth.get(mk) ?? 0) + d));
+  if (project.fatigueScore === 3) {
+    ctxObj.heavyByWeek.set(wk, Math.max(0, (ctxObj.heavyByWeek.get(wk) ?? 0) + sign));
+  }
+  ctxObj.dailyCounts.set(`${sid}|${sch.date}`, Math.max(0, (ctxObj.dailyCounts.get(`${sid}|${sch.date}`) ?? 0) + sign));
+  ctxObj.slotCounts.set(`${sid}|${sch.date}|${sch.slotLabel}`, Math.max(0, (ctxObj.slotCounts.get(`${sid}|${sch.date}|${sch.slotLabel}`) ?? 0) + sign));
+}
+
+function cloneCtx(c) {
+  return {
+    ...c,
+    fatigueWindow: new Map(c.fatigueWindow ?? []),
+    fatigueByWeek: new Map(c.fatigueByWeek ?? []),
+    heavyByWeek: new Map(c.heavyByWeek ?? []),
+    fatigueByMonth: new Map(c.fatigueByMonth ?? []),
+    dailyCounts: new Map(c.dailyCounts ?? []),
+    slotCounts: new Map(c.slotCounts ?? []),
+  };
+}
+
 function scheduleDialog(sch) {
   const project = data.projects.find(p => p.id === sch.projectId);
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
@@ -406,14 +562,7 @@ function scheduleDialog(sch) {
   const modal = openModal({ title: '排班分配', body, footer });
 
   async function deleteSchedule() {
-    for (const sid of sch.staffIds) {
-      ctx.weeklyFatigue.set(sid, Math.max(0, (ctx.weeklyFatigue.get(sid) ?? 0) - (project?.fatigueScore ?? 0)));
-      if (project?.fatigueScore === 3) ctx.heavyCounts.set(sid, Math.max(0, (ctx.heavyCounts.get(sid) ?? 0) - 1));
-      const dKey = `${sid}|${sch.date}`;
-      const sKey = `${sid}|${sch.date}|${sch.slotLabel}`;
-      ctx.dailyCounts.set(dKey, Math.max(0, (ctx.dailyCounts?.get(dKey) ?? 0) - 1));
-      ctx.slotCounts.set(sKey, Math.max(0, (ctx.slotCounts?.get(sKey) ?? 0) - 1));
-    }
+    for (const sid of sch.staffIds) applyDelta(ctx, sid, sch, -1);
     await removeSchedule(sch.id);
     modal.close();
     showToast('班次已删除', 'success');
@@ -472,12 +621,7 @@ function scheduleDialog(sch) {
       rm.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M18 6L6 18M6 6l12 12"/></svg>';
       rm.onclick = async () => {
         sch.staffIds = sch.staffIds.filter(id => id !== sid);
-        ctx.weeklyFatigue.set(sid, Math.max(0, (ctx.weeklyFatigue.get(sid) ?? 0) - project.fatigueScore));
-        if (project.fatigueScore === 3) ctx.heavyCounts.set(sid, Math.max(0, (ctx.heavyCounts.get(sid) ?? 0) - 1));
-        const dailyKey = `${sid}|${sch.date}`;
-        const slotKey = `${sid}|${sch.date}|${sch.slotLabel}`;
-        ctx.dailyCounts.set(dailyKey, Math.max(0, (ctx.dailyCounts?.get(dailyKey) ?? 0) - 1));
-        ctx.slotCounts.set(slotKey, Math.max(0, (ctx.slotCounts?.get(slotKey) ?? 0) - 1));
+        applyDelta(ctx, sid, sch, -1);
         await saveSchedule(sch);
         renderBody();
         renderCalendar(document.querySelector('#view'));
@@ -513,7 +657,7 @@ function scheduleDialog(sch) {
       }
       const info = document.createElement('span');
       info.className = 'assign-info';
-      info.textContent = `周疲劳 ${ctx.weeklyFatigue.get(s.id) ?? 0}/${s.maxWeeklyFatigue}`;
+      info.textContent = `周疲劳 ${ctx.fatigueByWeek.get(`${s.id}|${getWeekStart(sch.date)}`) ?? 0}/${s.maxWeeklyFatigue}`;
       row.append(name, info);
       if (!res.ok) {
         row.classList.add('blocked');
@@ -529,13 +673,8 @@ function scheduleDialog(sch) {
         row.appendChild(addHint);
         row.onclick = async () => {
           sch.staffIds.push(s.id);
-          const dailyKey = `${s.id}|${sch.date}`;
-          const slotKey = `${s.id}|${sch.date}|${sch.slotLabel}`;
-          const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
-          ctx.dailyCounts.set(dailyKey, dailyAfter);
-          ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
-          ctx.weeklyFatigue.set(s.id, (ctx.weeklyFatigue.get(s.id) ?? 0) + project.fatigueScore);
-          if (project.fatigueScore === 3) ctx.heavyCounts.set(s.id, (ctx.heavyCounts.get(s.id) ?? 0) + 1);
+          applyDelta(ctx, s.id, sch, 1);
+          const dailyAfter = ctx.dailyCounts.get(`${s.id}|${sch.date}`) ?? 0;
           await saveSchedule(sch);
           if ((ctx.settings?.warnDailyCount ?? 0) > 0 && dailyAfter >= ctx.settings.warnDailyCount) {
             showToast(`${s.name} 当日已达预警阈值 ${ctx.settings.warnDailyCount} 个任务`, 'info');
@@ -556,8 +695,10 @@ function scheduleDialog(sch) {
 
 function staffChipClass(staff, date) {
   if (!staff) return 'staff-chip';
-  const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
-  const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
+  if (timeScale === 'month') return 'staff-chip'; // 周上限红黄语义仅周粒度成立（月粒度不判超限）
+  const weekKey = `${staff.id}|${getWeekStart(date)}`; // 该班次所在自然周
+  const fatigue = ctx.fatigueByWeek.get(weekKey) ?? 0;
+  const heavy = ctx.heavyByWeek.get(weekKey) ?? 0;
   const daily = date ? (ctx.dailyCounts?.get(`${staff.id}|${date}`) ?? 0) : 0;
   const warnDaily = ctx.settings?.warnDailyCount ?? 0;
   if (fatigue > staff.maxWeeklyFatigue || heavy > staff.maxHeavyTaskCount) return 'staff-chip over';
@@ -567,9 +708,15 @@ function staffChipClass(staff, date) {
 
 function staffChipTitle(staff, date) {
   if (!staff) return '';
-  const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
-  const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
   const daily = date ? (ctx.dailyCounts?.get(`${staff.id}|${date}`) ?? 0) : 0;
+  if (timeScale === 'month') {
+    const mf = ctx.fatigueByMonth.get(`${staff.id}|${monthKey(date)}`) ?? 0;
+    const wk = ctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(date)}`) ?? 0;
+    return `本月累计 ${mf} · 本周 ${wk}/${staff.maxWeeklyFatigue} · 当日 ${daily} 个任务`;
+  }
+  const weekKey = `${staff.id}|${getWeekStart(date)}`;
+  const fatigue = ctx.fatigueByWeek.get(weekKey) ?? 0;
+  const heavy = ctx.heavyByWeek.get(weekKey) ?? 0;
   return `本周疲劳 ${fatigue}/${staff.maxWeeklyFatigue}，高强度 ${heavy}/${staff.maxHeavyTaskCount}，当日 ${daily} 个任务`;
 }
 
@@ -587,22 +734,8 @@ async function dropStaff(e, targetId) {
   const from = data.schedules.find(s => s.id === scheduleId);
 
   // 拖拽是"移动"而非"新增"：校验基于"移走源班次后"的计数快照，避免误报超限
-  const ctxAfterMove = {
-    ...ctx,
-    weeklyFatigue: new Map(ctx.weeklyFatigue),
-    heavyCounts: new Map(ctx.heavyCounts),
-    dailyCounts: new Map(ctx.dailyCounts),
-    slotCounts: new Map(ctx.slotCounts),
-  };
-  if (from && from.staffIds.includes(staffId)) {
-    const fromProject = data.projects.find(p => p.id === from.projectId);
-    ctxAfterMove.weeklyFatigue.set(staffId, Math.max(0, (ctxAfterMove.weeklyFatigue.get(staffId) ?? 0) - (fromProject?.fatigueScore ?? 0)));
-    if (fromProject?.fatigueScore === 3) ctxAfterMove.heavyCounts.set(staffId, Math.max(0, (ctxAfterMove.heavyCounts.get(staffId) ?? 0) - 1));
-    const fDailyKey = `${staffId}|${from.date}`;
-    const fSlotKey = `${staffId}|${from.date}|${from.slotLabel}`;
-    ctxAfterMove.dailyCounts.set(fDailyKey, Math.max(0, (ctxAfterMove.dailyCounts?.get(fDailyKey) ?? 0) - 1));
-    ctxAfterMove.slotCounts.set(fSlotKey, Math.max(0, (ctxAfterMove.slotCounts?.get(fSlotKey) ?? 0) - 1));
-  }
+  const ctxAfterMove = cloneCtx(ctx);
+  if (from && from.staffIds.includes(staffId)) applyDelta(ctxAfterMove, staffId, from, -1);
   const res = filterCandidate(staff, pseudoSchedule, projectById, ctxAfterMove);
   if (!res.ok) { showToast(res.reasons.join('；'), 'error'); return; }
 
@@ -612,37 +745,18 @@ async function dropStaff(e, targetId) {
 
   if (from && from.staffIds.includes(staffId)) {
     from.staffIds = from.staffIds.filter(id => id !== staffId);
-    const fromProject = data.projects.find(p => p.id === from.projectId);
-    ctx.weeklyFatigue.set(staffId, Math.max(0, (ctx.weeklyFatigue.get(staffId) ?? 0) - (fromProject?.fatigueScore ?? 0)));
-    if (fromProject?.fatigueScore === 3) ctx.heavyCounts.set(staffId, Math.max(0, (ctx.heavyCounts.get(staffId) ?? 0) - 1));
-    const fDailyKey = `${staffId}|${from.date}`;
-    const fSlotKey = `${staffId}|${from.date}|${from.slotLabel}`;
-    ctx.dailyCounts.set(fDailyKey, Math.max(0, (ctx.dailyCounts?.get(fDailyKey) ?? 0) - 1));
-    ctx.slotCounts.set(fSlotKey, Math.max(0, (ctx.slotCounts?.get(fSlotKey) ?? 0) - 1));
+    applyDelta(ctx, staffId, from, -1);
     await saveSchedule(from);
   }
   to.staffIds = [...new Set([...to.staffIds, staffId])];
-  const tDailyKey = `${staffId}|${to.date}`;
-  const tSlotKey = `${staffId}|${to.date}|${to.slotLabel}`;
-  const dailyAfter = (ctx.dailyCounts?.get(tDailyKey) ?? 0) + 1;
-  ctx.dailyCounts.set(tDailyKey, dailyAfter);
-  ctx.slotCounts.set(tSlotKey, (ctx.slotCounts?.get(tSlotKey) ?? 0) + 1);
-  ctx.weeklyFatigue.set(staffId, (ctx.weeklyFatigue.get(staffId) ?? 0) + (toProject?.fatigueScore ?? 0));
-  if (toProject?.fatigueScore === 3) ctx.heavyCounts.set(staffId, (ctx.heavyCounts.get(staffId) ?? 0) + 1);
+  applyDelta(ctx, staffId, to, 1);
+  const dailyAfter = ctx.dailyCounts.get(`${staffId}|${to.date}`) ?? 0;
   if ((ctx.settings?.warnDailyCount ?? 0) > 0 && dailyAfter >= ctx.settings.warnDailyCount) {
     showToast(`${staff.name} 当日已达预警阈值 ${ctx.settings.warnDailyCount} 个任务`, 'info');
   } else {
     showToast(`${staff.name} 已调整至 ${toProject?.name ?? ''} ${to.slotLabel}`, 'success');
   }
   await saveSchedule(to);
-  renderCalendar(document.querySelector('#view'));
-}
-
-function shiftWeek(days) {
-  const [y, m, d] = currentWeekStart.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() + days);
-  currentWeekStart = getWeekStart(toDateStr(date));
   renderCalendar(document.querySelector('#view'));
 }
 
@@ -664,13 +778,8 @@ async function fillSchedule(sch) {
       if (!best || score > best.score) best = { s: c.s, score };
     }
     sch.staffIds.push(best.s.id);
-    const dailyKey = `${best.s.id}|${sch.date}`;
-    const slotKey = `${best.s.id}|${sch.date}|${sch.slotLabel}`;
-    const dailyAfter = (ctx.dailyCounts?.get(dailyKey) ?? 0) + 1;
-    ctx.dailyCounts.set(dailyKey, dailyAfter);
-    ctx.slotCounts.set(slotKey, (ctx.slotCounts?.get(slotKey) ?? 0) + 1);
-    ctx.weeklyFatigue.set(best.s.id, (ctx.weeklyFatigue.get(best.s.id) ?? 0) + project.fatigueScore);
-    if (project.fatigueScore === 3) ctx.heavyCounts.set(best.s.id, (ctx.heavyCounts.get(best.s.id) ?? 0) + 1);
+    applyDelta(ctx, best.s.id, sch, 1);
+    const dailyAfter = ctx.dailyCounts.get(`${best.s.id}|${sch.date}`) ?? 0;
     if (warnDaily > 0 && dailyAfter >= warnDaily) warned.push(best.s.id);
     await saveSchedule(sch);
     filled++;
@@ -735,7 +844,7 @@ function openReplaceDialog(staff, sch) {
   meta.append(`今日 ${daySchedules.length} 个班次 · 周劳累积分 `);
   const fat = document.createElement('span');
   const refreshFat = () => {
-    const v = ctx.weeklyFatigue.get(staff.id) ?? 0;
+    const v = ctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(sch.date)}`) ?? 0;
     fat.textContent = `${v}/${staff.maxWeeklyFatigue}`;
     fat.className = 'rpl-fatigue' + (v > staff.maxWeeklyFatigue ? ' over' : '');
   };
@@ -808,19 +917,8 @@ function openReplaceDialog(staff, sch) {
         }
         async function replace() {
           // 一减一增：移除被替换者计数、累加替补者计数，ctx 同步防算法层计数错乱
-          ctx.weeklyFatigue.set(staff.id, Math.max(0, (ctx.weeklyFatigue.get(staff.id) ?? 0) - project.fatigueScore));
-          if (project.fatigueScore === 3) ctx.heavyCounts.set(staff.id, Math.max(0, (ctx.heavyCounts.get(staff.id) ?? 0) - 1));
-          const srcDaily = `${staff.id}|${s.date}`;
-          const srcSlot = `${staff.id}|${s.date}|${s.slotLabel}`;
-          ctx.dailyCounts.set(srcDaily, Math.max(0, (ctx.dailyCounts?.get(srcDaily) ?? 0) - 1));
-          ctx.slotCounts.set(srcSlot, Math.max(0, (ctx.slotCounts?.get(srcSlot) ?? 0) - 1));
-          const tgtDaily = `${r.staff.id}|${s.date}`;
-          const tgtSlot = `${r.staff.id}|${s.date}|${s.slotLabel}`;
-          ctx.dailyCounts.set(tgtDaily, (ctx.dailyCounts?.get(tgtDaily) ?? 0) + 1);
-          ctx.slotCounts.set(tgtSlot, (ctx.slotCounts?.get(tgtSlot) ?? 0) + 1);
-          ctx.weeklyFatigue.set(r.staff.id, (ctx.weeklyFatigue.get(r.staff.id) ?? 0) + project.fatigueScore);
-          if (project.fatigueScore === 3) ctx.heavyCounts.set(r.staff.id, (ctx.heavyCounts.get(r.staff.id) ?? 0) + 1);
-
+          applyDelta(ctx, staff.id, s, -1);
+          applyDelta(ctx, r.staff.id, s, 1);
           s.staffIds = s.staffIds.filter(id => id !== staff.id);
           s.staffIds.push(r.staff.id);
           await saveSchedule(s);
@@ -939,9 +1037,14 @@ function manualCreate(date, slotLabel, presetProjectId) {
     modal.close();
     const project = data.projects.find(p => p.id === projectId);
     showToast(`已创建班次：${weekdayLabel(dateVal)} ${dateVal.slice(5)} · ${slotValue} · ${project?.name ?? projectId}`, 'success');
-    // 目标周不在当前浏览周时跟随跳转，创建即所见
-    const weekOf = getWeekStart(dateVal);
-    if (weekOf !== currentWeekStart) currentWeekStart = weekOf;
+    // 目标不在当前浏览粒度范围时跟随跳转，创建即所见（周=所在周；月=所在月）
+    if (timeScale === 'month') {
+      const mk = monthKey(dateVal);
+      if (mk !== monthAnchor) monthAnchor = mk;
+    } else {
+      const weekOf = getWeekStart(dateVal);
+      if (weekOf !== currentWeekStart) currentWeekStart = weekOf;
+    }
     renderCalendar(document.querySelector('#view'));
   };
 }
@@ -950,7 +1053,7 @@ function bulkPlanDialog() {
   const body = document.createElement('div');
   const hint = document.createElement('p');
   hint.style.cssText = 'margin-bottom:10px;color:#6a6178;font-size:13px;';
-  hint.textContent = '按各任务的重复规则，从当前周开始向后展开班次空壳（不分配人员，已存在的自动跳过）。';
+  hint.textContent = '按各任务的重复规则，从当前浏览位置所在周开始向后展开班次空壳（不分配人员，已存在的自动跳过）。';
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:8px;';
   row.appendChild(document.createTextNode('铺排周数'));
@@ -975,7 +1078,9 @@ function bulkPlanDialog() {
     const n = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), 4);
     // 项目维度下只铺排当前任务
     const scopeProjects = viewMode === 'project' ? data.projects.filter(p => p.id === viewTargetId) : data.projects;
-    const expected = expandWeeks(scopeProjects, currentWeekStart, n, createSchedule);
+    // 起点 = 当前浏览锚点对应周的周一（周粒度 = 当前周；月粒度 = 月初所在周）
+    const planStart = timeScale === 'month' ? weeksCovering(monthAnchor)[0] : currentWeekStart;
+    const expected = expandWeeks(scopeProjects, planStart, n, createSchedule);
     const existing = new Set(data.schedules.map(s => `${s.date}|${s.projectId}|${s.slotLabel}`));
     let created = 0;
     for (const sch of expected) {

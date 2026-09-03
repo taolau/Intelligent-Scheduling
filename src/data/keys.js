@@ -9,6 +9,7 @@ export const KEYS = {
   schedules: 'is_sched:schedules',
   settings: 'is_sched:settings',
   calView: 'is_sched:cal_view',
+  calScale: 'is_sched:cal_scale', // 排班视图粒度 'week' | 'month'
   configTab: 'is_sched:config_tab',
   sidebar: 'is_sched:sidebar',
 };

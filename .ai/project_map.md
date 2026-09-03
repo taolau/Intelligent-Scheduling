@@ -23,12 +23,12 @@ Intelligent-Scheduling/
 | | `keys.js` | localStorage key 集中登记处（KEYS 全量常量 + STORES 业务表名；新 key 唯一入口，配套 docs/storage.md） | 无 |
 | | `db.js` | localStorage 持久化 + 内存 Map 索引（CRUD + writeAll 批量写，KEYS[storeName] 查表读写） | keys |
 | | `store.js` | 增量缓存门面（saveXxx/removeXxx 增量更新 cache；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db/keys |
-| `core/` | `week.js` | 周/日期/时间工具（纯函数） | 无 |
+| `core/` | `week.js` | 周/日期/时间/月工具（纯函数；月首/月标签/`YYYY-MM` 键、中心日换算） | 无 |
 | | `expand.js` | 按 weekDays+slots 展开班次；`expandWeeks` 批量展开连续 N 周 | week |
-| | `filter.js` | 硬性过滤（一票否决，返回原因） | week |
-| | `score.js` | 打分（擅长/均衡/间隔，返回得分构成） | week |
-| | `substitute.js` | 替补 Top3 推荐 + 上下文聚合 | filter/score/week |
-| `views/` | `calendar.js` | 周历网格看板（核心交互；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
+| | `filter.js` | 硬性过滤（一票否决，返回原因；周上限按班次所在自然周滚动窗口） | week |
+| | `score.js` | 打分（擅长 + 累计积分均衡，返回得分构成） | week |
+| | `substitute.js` | buildContext 上下文聚合（周/月/累计三轨计数）+ 替补 Top3 推荐 | filter/score/week |
+| `views/` | `calendar.js` | 排班视图（核心交互；**周/月双粒度切换** 状态 is_sched:cal_scale，月 = 覆盖自然月的完整周面板纵向堆叠、非本月日灰显；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
 | | `config.js` | 数据配置页（三 tab：人员/任务/系统设置；**cfg-frame 框架**=tab+操作按钮固定、内容容器内滚；人员/任务卡片网格装入浅紫面板 `.cfg-pane`（面板内滚）+ 头部名称实时筛选 + 卡片开关/编辑/**删除**（引用保护 + confirmDialog 确认）；系统设置=左右双面板参数/规则页；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
@@ -49,3 +49,4 @@ Intelligent-Scheduling/
 - **数据流**：store.js 缓存为唯一真源，视图层经 `getCache()` 读、`saveXxx()` 写；`loadAll` 仅初始化/导入/重置时调用。
 - **时段标签**：预置集合 `自主安排/早/中/晚`（model.js SLOT_LABELS），固定四行；全部无具体时间，负荷由数量上限+预警（settings）控制。
 - **buildContext 必须返回 schedules**（filter 重叠检测依赖），勿精简。
+- **ctx 计数三轨**（2026-09-03 双窗口重构后）：`fatigueWindow`/`heavyWindow` = 公平参考窗口累计（score 均衡消费，键 `sid`；窗口起点 `fatigueCutoff` = 今天 − `balanceWindowDays`，未来已分配班次 date ≥ 起点自然计入）；`fatigueByWeek`/`heavyByWeek` = 班次所在自然周（filter 周上限消费，键 `${sid}|周一首日期`）；`fatigueByMonth`/`heavyByMonth` = 班次所在自然月（月粒度 chip 展示，键 `${sid}|YYYY-MM`）；`dailyCounts`/`slotCounts` = 按日/时段键不变。视图层手动 ± 计数点必须三轨同步（统一 helper，勿散写）。

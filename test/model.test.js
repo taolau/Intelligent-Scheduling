@@ -194,7 +194,7 @@ test('SLOT_LABELS 预置四时段标签', () => {
 test('DEFAULT_SETTINGS 默认值', () => {
   assert.deepEqual(DEFAULT_SETTINGS, {
     dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
-    preferredBonus: 15, balanceFactor: 5,
+    preferredBonus: 15, balanceFactor: 5, balanceWindowDays: 90,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
   });
 });

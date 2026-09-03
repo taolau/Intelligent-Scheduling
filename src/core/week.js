@@ -52,3 +52,30 @@ export function timeToMinutes(t) {
 export function minutesBetween(startT, endT) {
   return timeToMinutes(endT) - timeToMinutes(startT);
 }
+
+// ===== 月工具（自然月窗口）=====
+
+export function monthKey(dateStr) {
+  return dateStr.slice(0, 7); // 'YYYY-MM'
+}
+
+export function shiftMonth(monthKeyStr, n) {
+  const [y, m] = monthKeyStr.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1); // 月份溢出自动进位/退位
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function weeksCovering(monthKeyStr) {
+  const [y, m] = monthKeyStr.split('-').map(Number);
+  const first = getWeekStart(`${monthKeyStr}-01`);
+  const last = getWeekStart(toDateStr(new Date(y, m, 0))); // m 月 0 号 = 月末日所在周周首
+  const result = [];
+  for (let d = parseDate(first); d <= parseDate(last); d.setDate(d.getDate() + 7)) {
+    result.push(toDateStr(d));
+  }
+  return result;
+}
+
+export function inMonth(dateStr, monthKeyStr) {
+  return dateStr.slice(0, 7) === monthKeyStr;
+}

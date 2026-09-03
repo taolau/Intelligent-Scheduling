@@ -4,7 +4,7 @@ export const FATIGUE_MAX = 3;
 // 数量上限 + 预警阈值 + 评分系数 + 新人员默认上限：可在数据配置页「系统设置」修改（改动对已保存数据即时生效；新人员默认仅作用于新建）
 export const DEFAULT_SETTINGS = {
   dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1, preferredBonus: 15, balanceFactor: 5,
-  defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
+  balanceWindowDays: 90, defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
 };
 
 export function createProject(fields = {}) {

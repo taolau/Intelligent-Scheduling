@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from '../data/model.js';
+import { getWeekStart } from './week.js';
 
 export function filterCandidate(staff, schedule, projectById, ctx) {
   const reasons = [];
@@ -27,7 +28,9 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
     else reasons.push(`时段任务数已达上限（${slotTaskLimit} 个）`);
   }
 
-  const fatigue = ctx.weeklyFatigue.get(staff.id) ?? 0;
+  // 周上限：按「该班次所在自然周」滚动窗口累计判定（过去周的累计不影响本周）
+  const weekKey = `${staff.id}|${getWeekStart(schedule.date)}`;
+  const fatigue = ctx.fatigueByWeek?.get(weekKey) ?? 0;
   if (fatigue + project.fatigueScore > staff.maxWeeklyFatigue) {
     if (fatigue > staff.maxWeeklyFatigue) reasons.push(`本周劳累积分已超限（上限 ${staff.maxWeeklyFatigue}）`);
     else if (fatigue === staff.maxWeeklyFatigue) reasons.push(`本周劳累积分已达上限（${staff.maxWeeklyFatigue}）`);
@@ -35,7 +38,7 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
   }
 
   if (project.fatigueScore === 3) {
-    const heavy = ctx.heavyCounts.get(staff.id) ?? 0;
+    const heavy = ctx.heavyByWeek?.get(weekKey) ?? 0;
     if (heavy + 1 > staff.maxHeavyTaskCount) {
       if (heavy > staff.maxHeavyTaskCount) reasons.push(`本周高强度次数已超限（上限 ${staff.maxHeavyTaskCount} 次）`);
       else reasons.push(`本周高强度次数已达上限（${staff.maxHeavyTaskCount} 次）`);

@@ -12,6 +12,7 @@
 | `is_sched:schedules` | 业务表 | 班次数组 `Schedule[]`（spec 3.4） | 同上 | 清除 | 导出/导入 |
 | `is_sched:settings` | 业务参数 | 全局参数对象（`dailyTaskLimit`/`slotTaskLimit`/`warnDailyCount` 等，读取时与 `DEFAULT_SETTINGS` 合并） | store.getSettings / saveSettings | 保留 | 不进备份 |
 | `is_sched:cal_view` | UI 状态 | `{mode:"overview"\|"project"\|"staff", id?}` 周历维度切换记忆 | calendar.js | 保留 | 不进备份 |
+| `is_sched:cal_scale` | UI 状态 | `"week"` / `"month"` 排班视图粒度记忆（菜单进入清除回 week） | calendar.js | 保留 | 不进备份 |
 | `is_sched:config_tab` | UI 状态 | `"staff"` / `"project"` / `"settings"` 配置页 tab 记忆 | config.js | 保留 | 不进备份 |
 | `is_sched:sidebar` | UI 状态 | `"1"` 收缩 / `"0"` 展开侧边栏 | main.js | 保留 | 不进备份 |
 
@@ -25,5 +26,6 @@
 
 ## 变更记录
 
+- 2026-09-03：新增 `cal_scale`（排班视图周/月粒度记忆）。
 - 2026-09-02：`config_tab` 值域扩为 `"staff"` / `"project"` / `"settings"`（设置由弹窗改为第三 tab「系统设置」）。
 - 2026-09-01：建立 key 集中登记机制（`src/data/keys.js` + 本文档）。侧边栏 key 由 `sidebar-collapsed`（历史遗留，无前缀、连字符命名）改名 `is_sched:sidebar`，旧值不迁移不留兼容代码，浏览器 DevTools 中可手动删除残留。

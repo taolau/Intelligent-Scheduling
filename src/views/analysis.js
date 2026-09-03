@@ -1,4 +1,3 @@
-import { buildContext } from '../core/substitute.js';
 import { getCache } from '../data/store.js';
 import { getWeekStart, getWeekLabel, todayStr, toDateStr, weekdayLabel, parseDate } from '../core/week.js';
 
@@ -29,7 +28,12 @@ export async function renderAnalysis(container) {
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
   const { start, end } = windowRange(mode, anchor);
   const windowSchedules = data.schedules.filter(s => s.date >= start && s.date <= end);
-  const ctx = buildContext(data.staffs, windowSchedules, projectById);
+  // 窗口内每人劳累积分（窗口班次已按粒度滤好，本地聚合；不依赖算法 ctx 的窗口轨）
+  const winFat = new Map();
+  for (const s of windowSchedules) {
+    const f = projectById[s.projectId]?.fatigueScore ?? 0;
+    for (const sid of s.staffIds) winFat.set(sid, (winFat.get(sid) ?? 0) + f);
+  }
 
   container.innerHTML = '';
   const bar = document.createElement('div');
@@ -71,7 +75,7 @@ export async function renderAnalysis(container) {
   const statRow = document.createElement('div');
   statRow.className = 'stat-row';
   if (mode === 'week') {
-    const overCount = activeStaffs.filter(s => (ctx.weeklyFatigue.get(s.id) ?? 0) > s.maxWeeklyFatigue).length;
+    const overCount = activeStaffs.filter(s => (winFat.get(s.id) ?? 0) > s.maxWeeklyFatigue).length;
     statRow.innerHTML = `
       <div class="stat"><div class="stat-value">${windowSchedules.length}</div><div class="stat-label">本周班次</div></div>
       <div class="stat"><div class="stat-value">${participants}</div><div class="stat-label">参与人员</div></div>
@@ -110,7 +114,7 @@ export async function renderAnalysis(container) {
     canvas.height = Math.round(ch * dpr);
     const g = canvas.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw(canvas, data.staffs, ctx, mode === 'week');
+    draw(canvas, data.staffs, winFat, mode === 'week');
   };
   fit();
   requestAnimationFrame(fit);
@@ -171,20 +175,20 @@ function roundedBar(g, x, y, w, h, r) {
   g.fill();
 }
 
-function draw(canvas, staffs, ctx, checkLimit) {
+function draw(canvas, staffs, winFat, checkLimit) {
   const g = canvas.getContext('2d');
   const W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
   g.clearRect(0, 0, W, H);
   const active = staffs.filter(s => s.status !== 'left');
   if (active.length === 0) return;
-  const sorted = [...active].sort((a, b) => (ctx.weeklyFatigue.get(b.id) ?? 0) - (ctx.weeklyFatigue.get(a.id) ?? 0));
+  const sorted = [...active].sort((a, b) => (winFat.get(b.id) ?? 0) - (winFat.get(a.id) ?? 0));
   const pad = { top: 26, right: 20, bottom: 50, left: 40 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
   const groupW = innerW / sorted.length;
   const barW = Math.min(34, groupW * 0.4);
   // 纵轴整数刻度：默认 0-6，数据超限自动扩到 8/10/12…
-  const rawMax = Math.max(6, ...sorted.map(s => ctx.weeklyFatigue.get(s.id) ?? 0));
+  const rawMax = Math.max(6, ...sorted.map(s => winFat.get(s.id) ?? 0));
   const NICE = [[6, 6], [8, 4], [10, 5], [12, 6], [16, 4], [20, 5], [24, 6], [30, 6], [36, 6], [48, 8], [60, 10]];
   const [axisMax, divisions] = NICE.find(([m]) => rawMax <= m) ?? [Math.ceil(rawMax / 10) * 10, 10];
 
@@ -211,7 +215,7 @@ function draw(canvas, staffs, ctx, checkLimit) {
 
   sorted.forEach((s, i) => {
     const cx = pad.left + groupW * i + groupW / 2;
-    const fatigue = ctx.weeklyFatigue.get(s.id) ?? 0;
+    const fatigue = winFat.get(s.id) ?? 0;
     const over = checkLimit && fatigue > s.maxWeeklyFatigue;
     // 劳累柱（黄渐变，圆角）——全图唯一柱，高度即积分
     const fh = (fatigue / axisMax) * innerH;

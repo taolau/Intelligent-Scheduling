@@ -11,7 +11,7 @@ const slot = { date: '2026-08-24', projectId: 'P101', slotLabel: '早' };
 
 test('擅长加分 +15', () => {
   const s = createStaff({ id: 'S1', name: '张三', preferredProjects: [{ projectId: 'P101', reason: '体力好' }] });
-  const r = scoreCandidate(s, slot, projectById, { weeklyFatigue: new Map(), teamAvg: 0 });
+  const r = scoreCandidate(s, slot, projectById, { fatigueWindow: new Map(), teamAvg: 0 });
   const pref = r.breakdown.find(b => b.label.includes('擅长'));
   assert.equal(pref.points, 15);
   assert.ok(pref.reason.includes('体力好'));
@@ -19,7 +19,7 @@ test('擅长加分 +15', () => {
 
 test('均衡加分: 积分低于平均得正分', () => {
   const s = createStaff({ id: 'S1', name: '张三' });
-  const ctx = { weeklyFatigue: new Map([['S1', 2]]), teamAvg: 4 };
+  const ctx = { fatigueWindow: new Map([['S1', 2]]), teamAvg: 4 };
   const r = scoreCandidate(s, slot, projectById, ctx);
   const bal = r.breakdown.find(b => b.label.includes('均衡'));
   assert.equal(bal.points, (4 - 2) * 5);
@@ -27,7 +27,7 @@ test('均衡加分: 积分低于平均得正分', () => {
 
 test('新入均衡加分按平均计 → 0', () => {
   const s = createStaff({ id: 'S1', name: '新人', status: 'new' });
-  const ctx = { weeklyFatigue: new Map([['S1', 0]]), teamAvg: 4 };
+  const ctx = { fatigueWindow: new Map([['S1', 0]]), teamAvg: 4 };
   const r = scoreCandidate(s, slot, projectById, ctx);
   const bal = r.breakdown.find(b => b.label.includes('均衡'));
   assert.equal(bal.points, 0);
@@ -51,7 +51,7 @@ test('computeTeamAvg: 排除 rest 休假人员', () => {
 
 test('擅长加分读取 settings.preferredBonus（默认 15 可配）', () => {
   const s = createStaff({ id: 'S1', name: '张三', preferredProjects: [{ projectId: 'P101', reason: '体力好' }] });
-  const r = scoreCandidate(s, slot, projectById, { weeklyFatigue: new Map(), teamAvg: 0, settings: { preferredBonus: 20 } });
+  const r = scoreCandidate(s, slot, projectById, { fatigueWindow: new Map(), teamAvg: 0, settings: { preferredBonus: 20 } });
   const pref = r.breakdown.find(b => b.label.includes('擅长'));
   assert.equal(pref.points, 20);
   assert.equal(r.score, 20);
@@ -59,7 +59,7 @@ test('擅长加分读取 settings.preferredBonus（默认 15 可配）', () => {
 
 test('均衡加分读取 settings.balanceFactor（默认 5 可配）', () => {
   const s = createStaff({ id: 'S1', name: '张三' });
-  const ctx = { weeklyFatigue: new Map([['S1', 2]]), teamAvg: 4, settings: { balanceFactor: 3 } };
+  const ctx = { fatigueWindow: new Map([['S1', 2]]), teamAvg: 4, settings: { balanceFactor: 3 } };
   const r = scoreCandidate(s, slot, projectById, ctx);
   const bal = r.breakdown.find(b => b.label.includes('均衡'));
   assert.equal(bal.points, (4 - 2) * 3);
