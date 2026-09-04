@@ -272,3 +272,11 @@
 - **根因**：`window.*` 是**页面 JS 运行时变量**，reload 销毁整页 JS 上下文，备份随之消失；localStorage 里的测试数据却已落盘。备份与注入同一次 evaluate 完成时最易中招——注入后往往需要 reload（db 内存 Map 不感知 localStorage 直写，见 #13）才能让应用读到测试数据，而 reload 恰好杀死备份
 - **解决**：备份写入 **localStorage 临时 key**（如 `__backup_sched`）而非 window 变量——localStorage 跨 reload 存活，验证完读回还原再删 key；或注入与验证全程不 reload（用 storage 事件/内存直改不可行时，改为先还原再 reload）。还原时若备份已丢，从**引用关系反推**（staffs 的 allowedProjects/schedules.projectId 指向的 id 必须存在，如本项目任务 id 恰为 P1/P2 语义 id，可重建同名同 id 记录保住引用）
 - **启示**：任何「覆盖真实数据前先备份」的临时状态，备份介质必须与数据的生命周期一致（同在 localStorage）；跨 reload 的临时值一律走 localStorage 临时 key，页面变量只活一个页面周期
+
+## 34. html2canvas 克隆「flex:1 + overflow:auto」滚动容器会按可视高裁切内容：导出长图须解 height/overflow
+
+- **报错**：周/月排班网格导出的长图内容被截断（月整月堆叠只出视口高度那一段），画面停在滚动条内区域
+- **场景**：exportScheduleImage 把屏幕上的 `.cal-grid`（周）/ `.cal-month-stack`（月，整月多周面板纵向堆叠）直接 `cloneNode` 进离屏包装交给 html2canvas。两个容器在应用内都是 `flex:1; min-height:0; overflow-y:auto` 的滚动容器，高度受父链约束
+- **根因**：html2canvas 按 DOM 计算尺寸截图——克隆体保留了 `flex:1 + overflow:auto`，放进无固定高度的离屏包装后仍按滚动容器语义渲染：可视区 = 有限高，内容超高部分不参与画布（被裁），而非撑开整张图
+- **解决**：克隆后显式置 `clone.style.height='auto'; clone.style.overflow='visible'`（exportScheduleImage 已统一处理），让内容按自然高度撑开长图；与 #22（onclone 改布局不扩大 canvas）同族——凡是导出的容器自带滚动/高度约束，进离屏前先解除
+- **启示**：凡导出目标元素在应用里是滚动容器（flex:1 + overflow/固定高），克隆给 html2canvas 前必须解除高度与裁剪约束；「导出图只截可视区一小段」先查克隆体是否仍带 overflow/flex 高度语义

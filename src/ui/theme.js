@@ -351,10 +351,13 @@ body { display:flex; height:100vh; overflow:hidden; }
   font-size:12px; color:#6a6178; }
 .cal-month-sep b { color:#5a1d78; font-weight:600; }
 .cal-month-panel .cal-grid { flex:none; overflow:visible; }
-.cal-out-month { background:#f7f4fa; }
-.cal-out-month .cal-date { background:#f1eef5; color:#a79cae; }
-.cal-out-month .cal-date b { color:#b8adc1; }
-.cal-out-month .cal-slot-card { opacity:.6; }
+/* 非本月灰显但照常可操作：内容仅轻淡化（非禁用式降透明），进入列即恢复全亮 + 底色回温，传达可交互 */
+.cal-out-month { background:#f4f0f8; transition:background-color .12s; }
+.cal-out-month .cal-date { background:#ece6f1; color:#9b8fa7; }
+.cal-out-month .cal-date b { color:#a99db4; }
+.cal-out-month .cal-slot-card { opacity:.75; transition:opacity .15s; }
+.cal-out-month:hover { background:#f7f4fb; }
+.cal-out-month:hover .cal-slot-card { opacity:1; }
 .cal-out-month .cal-add-day { background:#faf8fc; }
 .cal-mfat { font-style:normal; font-size:10px; color:#8b7f97; margin-left:4px;
   background:#f0eaf5; border-radius:6px; padding:0 4px; line-height:14px; }
@@ -389,21 +392,6 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:12px;
   flex-wrap:wrap; }
 .cal-bar-group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-
-/* ===== 导出下拉（合并 Excel/图片入口，hover 展开）===== */
-.cal-export { position:relative; }
-.cal-export-menu { display:none; position:absolute; top:100%; right:0; min-width:160px;
-  background:#fff; border:1px solid #e0d2ef; border-radius:10px; padding:4px;
-  box-shadow:0 4px 10px rgba(90,29,120,.10), 0 12px 28px rgba(60,12,74,.14); z-index:60; }
-.cal-export-menu::before { content:''; position:absolute; top:-8px; left:0; right:0; height:8px; }
-.cal-export:hover .cal-export-menu, .cal-export:focus-within .cal-export-menu { display:block; }
-.cal-export-item { display:flex; align-items:center; gap:7px; width:100%; border:none;
-  background:none; border-radius:7px; padding:6px 10px; font-size:12px; color:#2a2430;
-  cursor:pointer; text-align:left; transition:background-color .12s; }
-.cal-export-item:hover { background:#f7f1fa; color:#5a1d78; }
-.cal-export-item:disabled { color:#9b91a7; cursor:default; }
-.cal-export-item:disabled:hover { background:none; color:#9b91a7; }
-.cal-export-item svg { flex:none; }
 
 /* ===== 视图维度切换（总览/项目/人员）+ 过滤视图 ===== */
 .seg.seg-sm button { padding:4px 12px; font-size:12px; border-radius:7px; }

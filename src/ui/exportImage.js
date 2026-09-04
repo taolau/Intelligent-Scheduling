@@ -15,9 +15,10 @@ const GRID_WIDTH = 1200;
 const CARD_PAD = 22;
 const PAGE_PAD = 30;
 
-// 周历导出 PNG：离屏构造「浅底画布 + 白色圆角内容卡（居中标题 + 周历克隆）」截图，原页面零扰动；
-// 固定宽度保证任何窗口下导出大小一致；克隆时去掉今天高亮/小旗子（导出的图是长期排班表，不绑定"今天"）
-export async function exportWeekImage(container, filename, weekLabel, viewLabel) {
+// 排班图导出 PNG（周/月通用）：离屏构造「浅底画布 + 白色圆角内容卡（居中标题 + 内容克隆）」截图，原页面零扰动；
+// 内容元素由调用方传入——周 = .cal-grid 单面板，月 = .cal-month-stack 整月堆叠（含周分隔条 + 灰显邻月日）。
+// 固定宽度保证任何窗口下导出大小一致；克隆时去掉今天高亮/小旗子与功能性 UI（导出的图是长期排班表，不绑定"今天"）
+export async function exportScheduleImage(container, { filename, title, subtitle = '总览' }) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `position:absolute;left:-99999px;top:0;width:${GRID_WIDTH + CARD_PAD * 2 + PAGE_PAD * 2}px;padding:${PAGE_PAD}px;`;
   wrap.style.background = getComputedStyle(document.body).backgroundColor || '#f7f4f8';
@@ -27,22 +28,25 @@ export async function exportWeekImage(container, filename, weekLabel, viewLabel)
 
   const header = document.createElement('div');
   header.style.cssText = `text-align:center;padding:2px 0 14px;border-bottom:1px solid #e0d2ef;margin-bottom:14px;font-family:${FONT_STACK};`;
-  const title = document.createElement('div');
-  title.style.cssText = 'font-weight:700;font-size:20px;line-height:1.4;color:#5a1d78;';
-  title.textContent = weekLabel;
+  const titleEl = document.createElement('div');
+  titleEl.style.cssText = 'font-weight:700;font-size:20px;line-height:1.4;color:#5a1d78;';
+  titleEl.textContent = title;
   const meta = document.createElement('div');
   meta.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;';
   const left = document.createElement('span');
   left.style.cssText = 'font-size:13px;font-weight:500;color:#5a1d78;';
-  left.textContent = viewLabel || '总览';
+  left.textContent = subtitle || '总览';
   const right = document.createElement('span');
   right.style.cssText = 'font-size:12px;color:#8b728f;';
   right.textContent = `导出时间：${formatNow()}`;
   meta.append(left, right);
-  header.append(title, meta);
+  header.append(titleEl, meta);
 
-  // 导出的是静态视图：克隆时移除全部功能性 UI（建班次入口/智能排班按钮）与今天高亮/旗子
+  // 导出的是静态视图：克隆时移除全部功能性 UI（建班次入口/智能排班按钮）与今天高亮/旗子；
+  // 月堆叠/周网格原是 flex:1 + overflow 滚动容器，离屏时解除高度/裁剪约束让内容完整展开
   const clone = container.cloneNode(true);
+  clone.style.height = 'auto';
+  clone.style.overflow = 'visible';
   clone.querySelectorAll('.cal-today').forEach(el => el.classList.remove('cal-today'));
   clone.querySelectorAll('.cal-today-flag, .cal-add-day, .sch-smart').forEach(el => el.remove());
 

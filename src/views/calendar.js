@@ -9,8 +9,7 @@ import { createSchedule, SLOT_LABELS } from '../data/model.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
-import { exportAttendance } from '../ui/excel.js';
-import { exportWeekImage } from '../ui/exportImage.js';
+import { exportScheduleImage } from '../ui/exportImage.js';
 import { createSelect } from '../ui/select.js';
 import { field, setError } from '../ui/fields.js';
 import { ICON_FIRE } from '../ui/icons.js';
@@ -58,11 +57,9 @@ const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M9 18l6-6-6-6"/></svg>';
 const ICON_ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>';
 const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>';
-const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
-const ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M6 9l6 6 6-6"/></svg>';
 const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;display:block"><path d="M20 6L9 17l-5-5"/></svg>';
 
 export async function renderCalendar(container) {
@@ -145,31 +142,12 @@ export async function renderCalendar(container) {
   label.textContent = monthScale ? monthAnchor : getWeekLabel(currentWeekStart);
   const todayBtn = btn(monthScale ? '本月' : '今天');
   const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK);
-  // 合并导出入口：一个「导出」按钮 hover 下拉出 Excel/图片两项（纯 CSS hover 显隐，无需 JS 管理开合）
-  const exportWrap = document.createElement('div');
-  exportWrap.className = 'cal-export';
-  const exportBtn = btn('导出', false, false, ICON_EXPORT);
-  exportBtn.innerHTML += ICON_CARET;
-  const exportMenu = document.createElement('div');
-  exportMenu.className = 'cal-export-menu';
-  const excelItem = document.createElement('button');
-  excelItem.type = 'button';
-  excelItem.className = 'cal-export-item';
-  excelItem.innerHTML = `${ICON_EXPORT}<span>导出 Excel</span>`;
-  const imgItem = document.createElement('button');
-  imgItem.type = 'button';
-  imgItem.className = 'cal-export-item';
-  imgItem.innerHTML = `${ICON_IMAGE}<span>导出图片</span>`;
-  if (monthScale) {
-    imgItem.disabled = true;
-    imgItem.title = '月视图暂不支持导出图片，请切到周视图';
-  }
-  exportMenu.append(excelItem, imgItem);
-  exportWrap.append(exportBtn, exportMenu);
+  // 导出图片：直接按钮（无下拉）；周 = 当前周面板，月 = 整月视图长图（含首尾灰显邻月日）
+  const exportBtn = btn('导出图片', false, false, ICON_IMAGE);
   left.append(prev, label, next, todayBtn);
   // 人员维度为只读视图：隐藏智能排班/批量铺排（导出仍可用，截图跟随当前视图）
-  if (viewMode === 'staff') right.append(exportWrap);
-  else right.append(autoBtn, bulkBtn, exportWrap);
+  if (viewMode === 'staff') right.append(exportBtn);
+  else right.append(autoBtn, bulkBtn, exportBtn);
   bar.append(left, right);
   container.appendChild(bar);
 
@@ -178,29 +156,33 @@ export async function renderCalendar(container) {
   todayBtn.onclick = () => gotoNow();
   autoBtn.onclick = () => smartFill();
   bulkBtn.onclick = () => bulkPlanDialog();
-  excelItem.onclick = () => exportAttendance(data.schedules, data.projects, data.staffs, timeScale === 'month' ? weeksCovering(monthAnchor)[0] : currentWeekStart);
-  imgItem.onclick = async () => {
-    if (timeScale === 'month') {
-      showToast('月视图暂不支持导出图片，请切到周视图导出', 'info');
-      return;
-    }
-    const grid = container.querySelector('.cal-grid');
-    if (!grid) {
+  exportBtn.onclick = async () => {
+    const isMonth = timeScale === 'month';
+    const content = container.querySelector(isMonth ? '.cal-month-stack' : '.cal-grid');
+    if (!content) {
       showToast('当前视图暂无班次，无可导出的排班图', 'error');
       return;
     }
     const viewLabel = viewMode === 'overview' ? '总览'
       : viewMode === 'project' ? `任务：${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
       : `人员：${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
-    imgItem.disabled = true;
+    const scope = viewMode === 'overview' ? '总览'
+      : viewMode === 'project' ? `项目·${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
+      : `人员·${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
+    const cleanName = s => s.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+    const title = isMonth
+      ? `${Number(monthAnchor.slice(0, 4))} 年 ${Number(monthAnchor.slice(5))} 月`
+      : getWeekLabel(currentWeekStart);
+    const filename = `Numbers-排班图-${isMonth ? '月' : '周'}-${cleanName(scope)}-${isMonth ? monthAnchor : currentWeekStart}.png`;
+    exportBtn.disabled = true;
     showToast('正在生成图片…');
     try {
-      await exportWeekImage(grid, `Numbers-排班图-${currentWeekStart}.png`, getWeekLabel(currentWeekStart), viewLabel);
+      await exportScheduleImage(content, { filename, title, subtitle: viewLabel });
       showToast('排班图已导出', 'success');
     } catch (e) {
       showToast(`导出失败：${e.message}`, 'error');
     } finally {
-      imgItem.disabled = false;
+      exportBtn.disabled = false;
     }
   };
 
@@ -329,6 +311,7 @@ function buildGridPanel(host, weekStart, panelScheds, readOnly, outSet) {
       head.title = '今天';
       head.insertAdjacentHTML('beforeend', ICON_TODAY_FLAG);
     }
+    if (outSet?.has(d)) head.title = '相邻月份日期，班次照常可操作';
     if (viewMode !== 'staff') { // 人员维度只读，不提供建班次入口
       const addBtn = document.createElement('button');
       addBtn.type = 'button';

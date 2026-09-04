@@ -28,7 +28,7 @@ Intelligent-Scheduling/
 | | `filter.js` | 硬性过滤（一票否决，返回原因；周上限按班次所在自然周滚动窗口） | week |
 | | `score.js` | 打分（擅长 + 累计积分均衡，返回得分构成） | week |
 | | `substitute.js` | buildContext 上下文聚合（周/月/累计三轨计数）+ 替补 Top3 推荐 | filter/score/week |
-| `views/` | `calendar.js` | 排班视图（核心交互；**周/月双粒度切换** 状态 is_sched:cal_scale，月 = 覆盖自然月的完整周面板纵向堆叠、非本月日灰显；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏「导出」hover 下拉=Excel/图片）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
+| `views/` | `calendar.js` | 排班视图（核心交互；**周/月双粒度切换** 状态 is_sched:cal_scale，月 = 覆盖自然月的完整周面板纵向堆叠、非本月日灰显；**视图维度切换**：总览/项目/人员过滤+摘要，状态 is_sched:cal_view；工具栏**「导出图片」按钮**（周=当前周面板、月=整月长图，文件名带粒度+维度）；**替换弹窗 openReplaceDialog**（当天班次分组按时段排序、候选卡、完成态折叠绿条） | core+data+ui |
 | | `config.js` | 数据配置页（三 tab：人员/任务/系统设置；**cfg-frame 框架**=tab+操作按钮固定、内容容器内滚；人员/任务卡片网格装入浅紫面板 `.cfg-pane`（面板内滚）+ 头部名称实时筛选 + 卡片开关/编辑/**删除**（引用保护 + confirmDialog 确认）；系统设置=左右双面板参数/规则页；tab 记忆 is_sched:config_tab） | data+ui+excel |
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
@@ -39,7 +39,7 @@ Intelligent-Scheduling/
 | | `modal.js` | 弹窗（openModal 单点收口：遮罩点击不关、ESC/右上 X 关；**弹窗栈**嵌套 ESC 只关顶层；footer 惯例=次钮左/主钮右；**confirmDialog** 破坏性操作二次确认弹窗，box-confirm 窄宽） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
 | | `excel.js` | Excel 导入导出（SheetJS） | data/model |
-| | `exportImage.js` | 周历导出 PNG（html2canvas 离屏克隆：固定 1200px 宽/静态视图/标题区），文件名 Numbers-排班图-… | excel(下载) + week |
+| | `exportImage.js` | 排班图导出 PNG（周/月通用 exportScheduleImage；html2canvas 离屏克隆：固定 1200px 宽/标题区，克隆去交互 UI、解 overflow 防裁）+ 任务说明图导出 | excel(下载) |
 | | `toast.js` | 提示 | theme |
 | `main.js` | — | 入口装配三视图+导航 | views/* |
 

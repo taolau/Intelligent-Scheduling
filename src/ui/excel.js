@@ -1,7 +1,6 @@
 import * as XLSX from 'xlsx';
 import { createProject, createStaff, isValidTimeRange, reconcileStaff, SLOT_LABELS } from '../data/model.js';
 import { getCache, saveProject, saveStaff, getSettings } from '../data/store.js';
-import { getWeekDates } from '../core/week.js';
 
 // 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）无 ID 列；导出（存档/迁移）保留 ID 保证引用关系，导入两种均兼容。
 const PROJECT_BASE_COLS = [
@@ -256,24 +255,4 @@ export async function importStaffs(file) {
   } catch (e) {
     return { ok: false, message: `人员导入失败：${e.message}` };
   }
-}
-
-export async function exportAttendance(schedules, projects, staffs, weekStart) {
-  const projectById = Object.fromEntries(projects.map(p => [p.id, p]));
-  const staffById = Object.fromEntries(staffs.map(s => [s.id, s]));
-  let rows = schedules.map(sch => {
-    const p = projectById[sch.projectId];
-    const names = (sch.staffIds ?? []).map(id => staffById[id]?.name ?? id).join('、');
-    return { 日期: sch.date, 任务: p?.name ?? sch.projectId, 时段: sch.slotLabel, 人员: names };
-  });
-  if (weekStart) {
-    const [start, end] = [weekStart, getWeekDates(weekStart)[6]];
-    rows = rows.filter(r => r.日期 >= start && r.日期 <= end);
-  }
-  rows.sort((a, b) => String(a.日期).localeCompare(String(b.日期)));
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '排班');
-  const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
-  downloadBlob(blob, 'Numbers-排班表.xlsx');
 }
