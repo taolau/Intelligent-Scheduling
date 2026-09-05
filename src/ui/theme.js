@@ -582,6 +582,27 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .chart-wrap canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .chart-empty { height:100%; display:flex; align-items:center; justify-content:center;
   color:#9b91a7; font-size:14px; }
+
+/* ===== 批量铺排预览 ===== */
+.bulk-scope { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:12px; font-size:12px; }
+.bulk-tag { background:#efe3f6; color:#5a1d78; border-radius:999px; padding:0 8px; line-height:18px; font-size:11px; font-weight:600; }
+.bulk-range { color:#6a6178; }
+.bulk-count { display:flex; align-items:center; gap:10px; font-size:13px; padding:8px 10px; background:#f7f1fa; border-radius:8px; margin-bottom:8px; }
+.bulk-count b { color:#16a34a; font-size:14px; }
+.bulk-count .skip { color:#6a6178; }
+.bulk-count.none b { color:#d97706; }
+.bulk-list { max-height:260px; overflow-y:auto; border:1px solid #efe8f5; border-radius:8px; margin-bottom:8px; }
+.bulk-row { display:grid; grid-template-columns:1fr auto auto; gap:12px; align-items:center; padding:7px 10px; font-size:12px; border-top:1px solid #f5f0f9; }
+.bulk-row:first-child { border-top:none; }
+.bulk-row .name { font-weight:600; color:#241f2e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bulk-row .wd { color:#9b91a7; font-size:11px; white-space:nowrap; }
+.bulk-row .cnt { color:#6a6178; white-space:nowrap; }
+.bulk-row .cnt b { color:#16a34a; font-weight:600; }
+.bulk-row .cnt .skip { color:#9b91a7; }
+.bulk-row.head { font-weight:600; color:#9b91a7; font-size:11px; background:#fcfafd; }
+.bulk-empty { border:1px dashed #e0d2ef; border-radius:8px; padding:18px 12px; text-align:center; font-size:12px; color:#9b91a7; margin-bottom:8px; }
+.bulk-reason { font-size:12px; color:#d97706; margin:-2px 0 8px; }
+.bulk-hint { font-size:11px; color:#9b91a7; line-height:1.5; }
 `;
 
 export function injectGlobalStyles() {

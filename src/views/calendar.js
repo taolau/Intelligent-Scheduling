@@ -1,4 +1,4 @@
-import { expandWeeks } from '../core/expand.js';
+import { expandWeeks, previewExpand } from '../core/expand.js';
 import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes } from '../core/substitute.js';
@@ -1033,48 +1033,122 @@ function manualCreate(date, slotLabel, presetProjectId) {
 }
 
 function bulkPlanDialog() {
-  const body = document.createElement('div');
-  const hint = document.createElement('p');
-  hint.style.cssText = 'margin-bottom:10px;color:#6a6178;font-size:13px;';
-  hint.textContent = '按各任务的重复规则，从当前浏览位置所在周开始向后展开班次空壳（不分配人员，已存在的自动跳过）。';
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;';
-  row.appendChild(document.createTextNode('铺排周数'));
-  const input = document.createElement('input');
-  input.className = 'input';
-  input.type = 'number';
-  input.min = '1';
-  input.max = '4';
-  input.value = '2';
-  input.style.maxWidth = '90px';
-  row.appendChild(input);
-  body.append(hint, row);
+  // 范围 = 当前浏览范围（周 = 当前浏览周；月 = 浏览月覆盖的整段自然周，所见即所铺）
+  const isMonth = timeScale === 'month';
+  const weekStarts = isMonth ? weeksCovering(monthAnchor) : [currentWeekStart];
+  let scopeProjects = data.projects;
+  if (viewMode === 'project') scopeProjects = data.projects.filter(p => p.id === viewTargetId);
+  const key = s => `${s.date}|${s.projectId}|${s.slotLabel}`;
+  const preview = previewExpand(scopeProjects, weekStarts, new Set(data.schedules.map(key)));
 
+  const scopeText = viewMode === 'project'
+    ? `项目·${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
+    : '总览';
+  const spanEnd = weekStarts.length === 1 ? getWeekLabel(weekStarts[0])
+    : `${getWeekDates(weekStarts[0])[0]} ~ ${getWeekDates(weekStarts[weekStarts.length - 1])[6]}`;
+  const scopeLine = isMonth ? `${monthAnchor}（覆盖 ${spanEnd}）` : spanEnd;
+
+  const body = document.createElement('div');
+
+  // 范围行
+  const scopeRow = document.createElement('div');
+  scopeRow.className = 'bulk-scope';
+  const tag = document.createElement('span');
+  tag.className = 'bulk-tag';
+  tag.textContent = isMonth ? '月粒度' : '周粒度';
+  const range = document.createElement('span');
+  range.className = 'bulk-range';
+  range.textContent = scopeLine;
+  const dim = document.createElement('span');
+  dim.className = 'bulk-range';
+  dim.textContent = scopeText;
+  scopeRow.append(tag, range, dim);
+  body.appendChild(scopeRow);
+
+  // 计数条
+  const count = document.createElement('div');
+  count.className = 'bulk-count' + (preview.totalNew === 0 ? ' none' : '');
+  const cNew = document.createElement('b');
+  cNew.textContent = `将新建 ${preview.totalNew} 个班次`;
+  const cSkip = document.createElement('span');
+  cSkip.className = 'skip';
+  cSkip.textContent = `已存在跳过 ${preview.totalSkip}`;
+  count.append(cNew, cSkip);
+  body.appendChild(count);
+
+  const wdText = days => [...days].sort((a, b) => a - b).map(d => '日一二三四五六'[d]).join('、');
+
+  if (preview.perTask.length > 0) {
+    // 预览明细
+    const list = document.createElement('div');
+    list.className = 'bulk-list';
+    const head = document.createElement('div');
+    head.className = 'bulk-row head';
+    const hName = document.createElement('span'); hName.textContent = '任务';
+    const hCnt = document.createElement('span'); hCnt.className = 'cnt'; hCnt.textContent = '新建/跳过';
+    const hWd = document.createElement('span'); hWd.className = 'wd'; hWd.textContent = '重复星期';
+    head.append(hName, hCnt, hWd);
+    list.appendChild(head);
+    for (const t of preview.perTask) {
+      const name = data.projects.find(p => p.id === t.projectId)?.name ?? t.projectId;
+      const row = document.createElement('div');
+      row.className = 'bulk-row';
+      const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = name;
+      const cnt = document.createElement('span'); cnt.className = 'cnt';
+      cnt.innerHTML = `<b>${t.created}</b><span class="skip"> / ${t.skipped}</span>`;
+      const wd = document.createElement('span'); wd.className = 'wd';
+      wd.textContent = t.weekDays.length ? `每周${wdText(t.weekDays)}` : '一次性';
+      row.append(nm, cnt, wd);
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'bulk-empty';
+    empty.textContent = '该范围无启用中的周期任务（一次性任务请手动建班次）';
+    body.appendChild(empty);
+  }
+
+  // 空态（无周期任务）时已由空块说明；此处仅补「范围内已全部铺好」的原因
+  const reasonText = preview.totalNew === 0 && preview.perTask.length > 0
+    ? '范围内周期班次已全部铺好，无需新建'
+    : '';
+  if (reasonText) {
+    const reason = document.createElement('div');
+    reason.className = 'bulk-reason';
+    reason.textContent = reasonText;
+    body.appendChild(reason);
+  }
+
+  const hint = document.createElement('div');
+  hint.className = 'bulk-hint';
+  hint.textContent = '仅启用中的周期任务会铺排；新建班次为空壳（不分配人员）；已存在的自动跳过。';
+  body.appendChild(hint);
+
+  // footer：主按钮「开始铺排」（取消由 openModal 左侧自动补）
   const footer = document.createElement('div');
   const ok = document.createElement('button');
   ok.type = 'button';
   ok.className = 'btn btn-primary';
   ok.textContent = '开始铺排';
+  ok.disabled = preview.totalNew === 0;
   footer.appendChild(ok);
-  const modal = openModal({ title: '批量铺排未来 N 周', body, footer });
+  const modal = openModal({ title: '批量铺排', body, footer, closeText: '取消' });
+
   ok.onclick = async () => {
-    const n = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), 4);
-    // 项目维度下只铺排当前任务
-    const scopeProjects = viewMode === 'project' ? data.projects.filter(p => p.id === viewTargetId) : data.projects;
-    // 起点 = 当前浏览锚点对应周的周一（周粒度 = 当前周；月粒度 = 月初所在周）
-    const planStart = timeScale === 'month' ? weeksCovering(monthAnchor)[0] : currentWeekStart;
-    const expected = expandWeeks(scopeProjects, planStart, n, createSchedule);
-    const existing = new Set(data.schedules.map(s => `${s.date}|${s.projectId}|${s.slotLabel}`));
+    const existing = new Set(data.schedules.map(key));
+    const rows = expandWeeks(scopeProjects, weekStarts[0], weekStarts.length, createSchedule);
     let created = 0;
-    for (const sch of expected) {
-      if (!existing.has(`${sch.date}|${sch.projectId}|${sch.slotLabel}`)) {
+    for (const sch of rows) {
+      if (!existing.has(key(sch))) {
         await saveSchedule(sch);
         created++;
       }
     }
     data = getCache();
     modal.close();
-    showToast(`已铺排 ${n} 周、新建 ${created} 个班次`, created ? 'success' : 'info');
+    const skipped = rows.length - created;
+    showToast(`已铺排当前${isMonth ? '月' : '周'} · 新建 ${created} · 跳过 ${skipped}`, created ? 'success' : 'info');
     renderCalendar(document.querySelector('#view'));
   };
 }

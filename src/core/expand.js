@@ -35,3 +35,26 @@ export function expandWeeks(projects, fromWeekStart, nWeeks, createScheduleFn) {
   }
   return out;
 }
+
+// 批量铺排预览：统计 weekStarts 覆盖范围内各任务将新建 / 已存在跳过的班次数（纯函数，不写库）
+export function previewExpand(projects, weekStarts, existingKeySet) {
+  let totalNew = 0;
+  let totalSkip = 0;
+  const perTask = [];
+  for (const p of projects) {
+    let created = 0;
+    let skipped = 0;
+    for (const ws of weekStarts) {
+      for (const row of expandProjectForWeek(p, ws)) {
+        if (existingKeySet.has(`${row.date}|${row.projectId}|${row.slotLabel}`)) skipped += 1;
+        else created += 1;
+      }
+    }
+    if (created > 0 || skipped > 0) {
+      perTask.push({ projectId: p.id, weekDays: p.weekDays, created, skipped });
+      totalNew += created;
+      totalSkip += skipped;
+    }
+  }
+  return { totalNew, totalSkip, perTask };
+}

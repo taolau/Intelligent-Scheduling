@@ -1,24 +1,25 @@
-# [时间] 2026-09-04
+# [时间] 2026-09-05
 # [定位] 实时上下文：当前 Sprint 进度缓存
 # [作用] 记录"现在"正在做的事。任务完成后需及时清理。
 # [规则] 重点标注 Tao 的进度。
 
 ## 📍 当前状态
-- **09-03 双批已提交**（05babed 任务视图/疲劳窗口 + 03fb835 月视图/公平窗口）——已清账
-- **09-04 批次（未提交，working tree 在案，提交粒度 Tao 拍板）**：
-  - 侧栏菜单改名：排班周历 → **「排班管理」**（main.js views 注册表 label，纯文案，切换靠 key 不依赖文案）
-  - 月视图非本月日**「可点灰」**（语义不变仍可操作）：theme.js 从整列 opacity .6 禁用感 → 轻淡化 .75 + hover 该列恢复全亮/底色回温；calendar.js 日期头加 tooltip「相邻月份日期，班次照常可操作」
-  - 排班导出改造：工具栏**去 Excel 下拉 → 直接「导出图片」按钮**；**月粒度支持整月长图导出**（exportImage.js 把 exportWeekImage 泛化为 exportScheduleImage(content,{filename,title,subtitle})，克隆解 height/overflow 防裁）；文件名 `Numbers-排班图-{周|月}-{总览|项目·名|人员·名}-{周首|YYYY-MM}.png`（维度名清洗非法字符）；excel.js 删 exportAttendance（含孤儿 getWeekDates 导入）、theme.js 删 .cal-export* 下拉样式
-  - 测试种子脚本落档 `docs/脚本/测试数据-播种.js`（8 任务/11 人/~190 班次，跨过去 5 周~未来 2 周；Console 粘贴即用，直接覆盖三表无备份，改前先导出 JSON）
-  - 验证：导出图待 Tao 自查（周回归/月长图灰列与分隔条/无 +与闪电残留/文件名粒度维度/Excel 入口消失）
-- **dist**：⏳ 旧构建（含 09-03），需 `node build.js`（Tao 要求时才构建）
+- **09-04 已提交**（04e571d 排班视图与导出）——已清账；working tree 回到 clean
+- **09-05 批次（未提交，working tree 在案，提交粒度 Tao 拍板）**：
+  - **批量铺排弹窗改造**：语义从「向后铺 N 周」→ **铺满当前浏览范围**（周 = 当前浏览周；月 = 浏览月覆盖的整段自然周 ≤6，所见即所铺；修掉旧 N≤4 铺不满整月 bug）；预览逻辑抽 core 纯函数 `previewExpand`（expand.js，统计「将新建/已存在跳过」按任务明细，node:test 4 例）
+  - 弹窗升级「预览 + 确认」单层确认：范围行（粒度 tag + 日期/月覆盖 + 维度）+ 计数条 + 明细行（任务 / 新建·跳过 / 重复星期）+ 空态与「已全部铺好」禁用原因 + hint；体例对齐（去内联 cssText，theme.js 新增 `.bulk-*` 段）
+  - 措辞统一「当前周/月」不用「本周/本月」（防翻到过去/未来周再铺误导）
+  - 文档：设计 spec + 实施 plan 落 `docs/superpowers/{specs,plans}/2026-09-05-*`；.ai/spec.md §4.1/§5.2 同步
+  - 验证：单测 98 全绿；Playwright 实测过（周总览 36 新建 → 重开「已铺满」禁用、项目维单任务、月整月 144 覆盖末周含灰列 10/2）——测后 dev 数据已还原
+- **dist**：⏳ 旧构建（09-03），需 `node build.js`（Tao 要求时才构建）
 
 ## 🧠 核心决策
+- 09-05 批量铺排三件套（已落 spec 4.1/5.2 + 设计文档）：**铺满当前浏览范围**（去 N 输入）、**单层预览确认**（不套独立 confirmDialog——非破坏、幂等，主按钮 totalNew=0 即禁用分因提示）、预览抽 **core 纯函数 previewExpand**（视图只渲染，预览/执行共用同一 weekStarts，杜绝计数漂移）
 - 导出语义（已落 spec 5.2/5.5，行为生效）：排班页**只提供「导出图片」**，xlsx 考勤导出**彻底移除**（存档走图片 + JSON）；图片按当前粒度——周 = 单面板，月 = **整月长图还原视图**（含周分隔条与首尾灰显邻月日）
 - 09-03 决策（ctx 三轨/月视图双粒度/公平窗口均衡）已在 spec 正文固化，行为仍生效，此处不再重复
 
 ## ⚠️ 待办与注意
-- [待办] Tao 自查 09-04 导出图批次后提交（提交粒度 Tao 拍板）；spec 已同步
+- [待办] Tao 自查 09-05 批量铺排改动后统一提交（含设计 spec/plan 文档；提交粒度 Tao 拍板）；spec/memory 已同步
 - [注意] 视图重置只在 main.js switchView 的 resetViewDefaults（周历清 cal_view+cal_scale 回周粒度）；新页面有「菜单进入默认态」需求照此导出 reset 函数，禁止放进 render
 - [注意] 导出图克隆去 .cal-today/.cal-add-day/.sch-smart；周/月内容原是 flex:1+overflow 滚动容器，克隆须解 height:auto/overflow:visible 防裁
 - [注意] 侧栏**文字**在 main.js views 注册表改（排班管理/数据配置/疲劳分析），**样式**两处同步（index.html 首屏段 + theme.js）
