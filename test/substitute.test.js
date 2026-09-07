@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildContext, recommendSubstitutes } from '../src/core/substitute.js';
+import { buildContext, recommendSubstitutes, narrateReasons } from '../src/core/substitute.js';
 import { createStaff, createProject } from '../src/data/model.js';
 
 const P101 = createProject({ id: 'P101', name: '搬运', fatigueScore: 2, slots: [{ label: '上午', startTime: '08:00', endTime: '12:00' }] });
@@ -25,7 +25,7 @@ test('buildContext 三轨计数：窗口积分/周累计/月累计/团队平均'
   assert.equal(ctx.heavyByWeek.has('S1|2026-08-24'), false); // P101 疲劳 2 非高强度
   assert.equal(ctx.fatigueByMonth.get('S1|2026-08'), 4);
   assert.equal(ctx.teamAvg, 3);
-  assert.equal(ctx.fatigueCutoff, '2026-06-02'); // 8/30 回看 90 天（含 8/30）
+  assert.equal(ctx.fatigueCutoff, '2026-08-01'); // 8/30 回看 30 天（含 8/30）
 });
 
 test('buildContext 窗口滑出：窗口外班次不进均衡轨、但进周/月轨', () => {
@@ -88,6 +88,9 @@ test('recommendSubstitutes: 返回 Top3 降序, 排除被替换人与当前人�
   assert.equal(result[0].staff.id, 'S2');
   assert.ok(result.every(r => r.staff.id !== 'S1'));
   assert.ok(result.every(r => r.reasons.length > 0));
+  // 理由人话化：首位（擅长者）副行 = 判断句「擅长搬运：熟练」+ 均衡带窗口天数（无「加分(N)/本人X/平均Y」黑话）
+  assert.equal(result[0].reasons[0], '擅长搬运：熟练');
+  assert.ok(result[0].reasons.some(r => r.includes('近 30 天排班较少')));
 });
 
 test('recommendSubstitutes: 无人可用时返回空', () => {
@@ -95,4 +98,68 @@ test('recommendSubstitutes: 无人可用时返回空', () => {
   const ctx = buildContext(staffs, [schedule], projectById, undefined, TODAY);
   const result = recommendSubstitutes(staffs, schedule, projectById, ctx, 'S1');
   assert.equal(result.length, 0);
+});
+
+// —— 理由人话化（narrateReasons）分支 ——
+const P101Narrate = { P101: { id: 'P101', name: '搬运' } };
+const schNarrate = { date: '2026-08-24', projectId: 'P101', slotLabel: '上午' };
+
+test('narrateReasons: 擅长命中带原因 + 窗口偏少给带时间范围的建议句', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate, [
+    { label: '擅长加分', points: 15, reason: '体力好' },
+    { label: '均衡加分', points: 25, reason: '旧黑话' },
+  ], { fatigueWindow: new Map([['S9', 0]]), teamAvg: 5 });
+  assert.deepEqual(lines, ['擅长搬运：体力好', '近 30 天排班较少，建议优先']);
+});
+
+test('narrateReasons: 均衡齐平（本人≈平均）不给行，无擅长则副行为空', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '均衡加分', points: 0, reason: '旧黑话' }], { fatigueWindow: new Map([['S9', 5]]), teamAvg: 5 });
+  assert.equal(lines.length, 0);
+});
+
+test('narrateReasons: 窗口偏多给中性句', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '均衡加分', points: -15, reason: '旧黑话' }], { fatigueWindow: new Map([['S9', 8]]), teamAvg: 5 });
+  assert.deepEqual(lines, ['近 30 天排班较多']);
+});
+
+test('narrateReasons: 时间范围用公平窗口实际天数（可配置 balanceWindowDays）', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '均衡加分', points: 2, reason: '旧黑话' }],
+    { fatigueWindow: new Map([['S9', 0]]), teamAvg: 5, settings: { balanceWindowDays: 30 } });
+  assert.deepEqual(lines, ['近 30 天排班较少，建议优先']);
+});
+
+test('narrateReasons: 新入不产生均衡驱动句（算法均衡恒 0，界面不诱导用新人）', () => {
+  const staff = { id: 'S9', status: 'new' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '均衡加分', points: 0, reason: '旧黑话' }], { fatigueWindow: new Map([['S9', 0]]), teamAvg: 5 });
+  assert.equal(lines.length, 0);
+});
+
+test('narrateReasons: 擅长无录入原因仅句头；均衡句不带裸数字（本人/平均）', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '擅长加分', points: 15, reason: '' }, { label: '均衡加分', points: 2, reason: '旧黑话' }],
+    { fatigueWindow: new Map([['S9', 0]]), teamAvg: 0.5 });
+  assert.deepEqual(lines, ['擅长搬运', '近 30 天排班较少，建议优先']);
+});
+
+test('recommendSubstitutes: 返回全部通过者不截断（推荐前 3 / 其他可选分档是弹窗职责）', () => {
+  const staffs = [
+    createStaff({ id: 'S1', name: '被替换人', allowedProjects: ['P101'] }),
+    createStaff({ id: 'S2', name: '甲', allowedProjects: ['P101'], preferredProjects: [{ projectId: 'P101', reason: 'x' }] }),
+    createStaff({ id: 'S3', name: '乙', allowedProjects: ['P101'] }),
+    createStaff({ id: 'S4', name: '丙', allowedProjects: ['P101'] }),
+    createStaff({ id: 'S5', name: '丁', allowedProjects: ['P101'] }),
+  ];
+  const ctx = buildContext(staffs, [schedule], projectById, undefined, TODAY);
+  const result = recommendSubstitutes(staffs, schedule, projectById, ctx, 'S1');
+  assert.equal(result.length, 4); // 超过 3 也全量返回，供界面切成「推荐前3 + 其他」
+  assert.ok(result.every((r, i) => i === 0 || result[i - 1].score >= r.score)); // 保持降序
 });

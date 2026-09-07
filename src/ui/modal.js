@@ -55,14 +55,14 @@ export function openModal({ title, body, footer, boxClass = '', closeText = '关
   return { close };
 }
 
-// 破坏性操作二次确认弹窗：左取消 + 右红色确认钮，确认后执行 onConfirm
-export function confirmDialog({ title = '确认删除', message, confirmText = '确认', onConfirm }) {
+// 二次确认弹窗：左取消 + 右确认钮（默认红 danger 表破坏性；非破坏性变更调用方可传 okClass 改淡紫等），确认后执行 onConfirm
+export function confirmDialog({ title = '确认删除', message, confirmText = '确认', onConfirm, okClass = 'btn-danger' }) {
   const body = document.createElement('div');
   body.className = 'modal-msg';
   body.textContent = message;
   const okBtn = document.createElement('button');
   okBtn.type = 'button';
-  okBtn.className = 'btn btn-danger';
+  okBtn.className = `btn ${okClass}`;
   okBtn.textContent = confirmText;
   const modal = openModal({ title, body, footer: okBtn, boxClass: 'box-confirm', closeText: '取消' });
   okBtn.onclick = async () => { modal.close(); await onConfirm(); };

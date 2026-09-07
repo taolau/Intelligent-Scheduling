@@ -1,6 +1,6 @@
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
-import { field, setError, rowsEditor } from '../ui/fields.js';
+import { field, setError, rowsEditor, tagsInput } from '../ui/fields.js';
 import { createSelect } from '../ui/select.js';
 import { createTimePicker } from '../ui/timepicker.js';
 import { getCache, saveProject, saveStaff, getSettings, saveSettings, removeStaff, removeProject } from '../data/store.js';
@@ -72,20 +72,34 @@ function btn(text, active = false, icon = '') {
   return b;
 }
 
-// 实时名称筛选：隐藏不匹配卡片；有数据但筛空时补「未找到」空态（数据为空的原生空态不受影响）
-function setupNameFilter(input, grid, noun) {
+// 全库人员标签去重排序；无人有标签返回 null（不提供过滤）
+function tagFilterSel(staffs) {
+  const tags = [...new Set(staffs.flatMap(s => s.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
+  if (!tags.length) return null;
+  const sel = createSelect({ multiple: true, placeholder: '按标签筛选', options: tags.map(t => ({ value: t, label: t })) });
+  sel.classList.add('cfg-tag-sel');
+  return sel;
+}
+
+// 实时筛选：名称关键字 + 标签多选叠加（与关系：须同时带所选全部标签）；隐藏不匹配卡片；数据为空时保持原生空态
+function setupNameFilter(input, tagSel, grid, noun) {
   const apply = () => {
     const kw = input.value.trim().toLowerCase();
+    const sel = tagSel?.value ?? [];
     const cards = [...grid.querySelectorAll('.cfg-card')];
     let visible = 0;
     for (const card of cards) {
       const title = card.querySelector('.cfg-card-title');
-      const hit = !kw || (title && title.textContent.toLowerCase().includes(kw));
+      let tags = [];
+      try { tags = JSON.parse(card.dataset.tagsJson ?? '[]'); } catch { /* 标签数据损坏则视为无标签 */ }
+      const hit = (!kw || (title && title.textContent.toLowerCase().includes(kw)))
+        && (sel.length === 0 || sel.every(t => tags.includes(t)));
       card.style.display = hit ? '' : 'none';
       if (hit) visible++;
     }
+    const kwText = input.value.trim();
     let empty = grid.querySelector('.grid-empty');
-    if (!kw || !cards.length || visible) {
+    if ((!kw && !sel.length) || !cards.length || visible) {
       if (empty && cards.length) empty.remove();
       return;
     }
@@ -95,9 +109,13 @@ function setupNameFilter(input, grid, noun) {
       empty.style.gridColumn = '1 / -1';
       grid.appendChild(empty);
     }
-    empty.textContent = `未找到名称含「${input.value.trim()}」的${noun}`;
+    const conds = [];
+    if (kwText) conds.push(`名称含「${kwText}」`);
+    if (sel.length) conds.push(`带标签 ${sel.join('、')}`);
+    empty.textContent = `未找到${conds.join('且')}的${noun}`;
   };
   input.addEventListener('input', apply);
+  return apply;
 }
 
 function searchControl(placeholder) {
@@ -271,13 +289,16 @@ async function renderStaffs(head, scroll) {
   const actions = document.createElement('div');
   actions.className = 'cfg-actions';
   const search = searchControl('筛选人员名称');
+  const tagSel = tagFilterSel(staffs);
   const addBtn = btn('新增人员', false, ICON_PLUS);
   const importBtn = btn('Excel 导入', false, ICON_UPLOAD);
   const exportBtn = btn('Excel 导出', false, ICON_DOWNLOAD);
   addBtn.onclick = () => editStaffDialog();
   importBtn.onclick = () => importDialog({ title: '导入人员', handler: importStaffs, template: downloadStaffTemplate });
   exportBtn.onclick = () => exportStaffs();
-  actions.append(search, addBtn, importBtn, exportBtn);
+  if (tagSel) actions.append(search, tagSel);
+  else actions.append(search);
+  actions.append(addBtn, importBtn, exportBtn);
   head.appendChild(actions);
 
   const grid = document.createElement('div');
@@ -300,6 +321,10 @@ async function renderStaffs(head, scroll) {
       : '<span class="empty">—</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
+    card.dataset.tagsJson = JSON.stringify(s.tags ?? []);
+    const tagsHtml = (s.tags ?? []).length
+      ? s.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
+      : '<span class="empty">—</span>';
     card.innerHTML = `
       <div class="cfg-card-head">
         <span class="cfg-card-title">${esc(s.name)}</span>
@@ -309,6 +334,7 @@ async function renderStaffs(head, scroll) {
         <div class="cfg-row"><span class="k">可胜任</span><span class="v">${allowed}</span></div>
         <div class="cfg-row"><span class="k">擅长</span><span class="v">${pref}</span></div>
         <div class="cfg-row"><span class="k">不合适</span><span class="v">${banned}</span></div>
+        <div class="cfg-row"><span class="k">标签</span><span class="v">${tagsHtml}</span></div>
         <div class="cfg-row"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></div>
         <div class="cfg-row"><span class="k">高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></div>
       </div>
@@ -348,13 +374,14 @@ async function renderStaffs(head, scroll) {
   scroll.appendChild(wrapPanel(grid));
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
-  setupNameFilter(search, grid, '人员');
+  const applyFilter = setupNameFilter(search, tagSel, grid, '人员');
+  if (tagSel) tagSel.addEventListener('change', applyFilter);
 }
 
 async function editStaffDialog(staff) {
   // 新建人员带入「设置」里的系统默认上限（仅默认值，编辑既有人员不受影响）
   const target = staff ?? createStaff({}, getSettings());
-  const { projects } = getCache();
+  const { projects, staffs } = getCache();
   const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
   const body = document.createElement('div');
 
@@ -473,10 +500,13 @@ async function editStaffDialog(staff) {
   const heavyF = field({ label: '高强度次数上限', control: heavyInput });
 
   const limitRow = document.createElement('div');
-  limitRow.style.cssText = 'display:flex;gap:10px;';
-  fatigueF.wrap.style.flex = '1';
-  heavyF.wrap.style.flex = '1';
+  limitRow.className = 'field-pair';
   limitRow.append(fatigueF.wrap, heavyF.wrap);
+
+  // 标签：同一输入框可输可选——聚焦弹出已有标签候选，回车或无匹配回车即自创新标签（共享标签库，同一标签每人至多一个）
+  const tagPool = [...new Set(staffs.flatMap(s => s.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
+  const tagsCtrl = tagsInput({ initial: target.tags ?? [], options: tagPool });
+  const tagsF = field({ label: '标签', control: tagsCtrl, hint: '聚焦可选已有标签；输入无匹配时回车即新建，可多个' });
   const allowedLab = allowedF.wrap.querySelector('label');
   const fillBannedBtn = makeFillBtn('可胜任之外全部设为不合适', () => {
     const allowed = new Set(allowedSel.value);
@@ -511,7 +541,10 @@ async function editStaffDialog(staff) {
     fillAllowedBtn.disabled = true;
     fillBannedBtn.disabled = true;
   }
-  body.append(nameF.wrap, statusF.wrap, limitRow, allowedF.wrap, bannedEditor.el, preferredEditor.el);
+  const headPair = document.createElement('div');
+  headPair.className = 'field-pair';
+  headPair.append(nameF.wrap, statusF.wrap);
+  body.append(headPair, limitRow, allowedF.wrap, bannedEditor.el, preferredEditor.el, tagsF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -532,6 +565,7 @@ async function editStaffDialog(staff) {
       bannedProjects: bannedEditor.collect(),
       maxWeeklyFatigue: Number(fatigueInput.value),
       maxHeavyTaskCount: Number(heavyInput.value),
+      tags: tagsCtrl.value,
     });
     // 三列表关系预检（名称级提示）：矛盾不代改，列出后由用户按顺序化解
     const relIssues = [];
@@ -663,7 +697,7 @@ async function renderProjects(head, scroll) {
   scroll.appendChild(wrapPanel(grid));
   grid.querySelectorAll('.cfg-row .v').forEach(foldTags);
   observeGridFold(grid);
-  setupNameFilter(search, grid, '任务');
+  setupNameFilter(search, null, grid, '任务');
 }
 
 // —— 任务视图（任务说明清单）：任务 tab 就地切换的纯展示态，供导出图片给执行人员看每个任务要做什么 ——
@@ -976,7 +1010,7 @@ const SET_GROUPS = [
       { key: 'balanceFactor', name: '均衡系数', min: 1,
         hint: '均衡加分 = (团队窗口平均 − 本人窗口疲劳) × 系数，可为负。窗口见「公平参考窗口」。系数越大越优先排窗口内干得少的人；越小越偏向熟手优先。' },
       { key: 'balanceWindowDays', name: '公平参考窗口（天）', min: 7, max: 365,
-        hint: '均衡加分只参考「今天回看 N 天」内已排班次（未来已排定的也算）。默认 90 ≈ 三个月：谁近三个月干得少谁优先轮上；窗口滑出后旧账自动淡出，不会让「某月被集中排班」变成永久负债。' },
+        hint: '均衡加分只参考「今天回看 N 天」内已排班次（未来已排定的也算）。默认 30 ≈ 一个月：谁近一个月干得少谁优先轮上；窗口滑出后旧账自动淡出，不会让「某月被集中排班」变成永久负债。' },
     ],
   },
   {

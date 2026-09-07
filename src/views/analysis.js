@@ -64,7 +64,11 @@ export async function renderAnalysis(container) {
   label.textContent = windowLabel(mode, anchor);
   const today = btn(mode === 'day' ? '今天' : mode === 'week' ? '本周' : '本月');
   group.append(prev, label, next, today);
-  bar.append(seg, group);
+  // 与排班管理同构：粒度 seg + 时间导航连排靠左（bar 两端分布会把这组推到右上角孤立）
+  const left = document.createElement('div');
+  left.className = 'cal-bar-group';
+  left.append(seg, group);
+  bar.append(left);
   container.appendChild(bar);
   prev.onclick = () => { anchor = shiftAnchor(mode, anchor, -1); renderAnalysis(container); };
   next.onclick = () => { anchor = shiftAnchor(mode, anchor, 1); renderAnalysis(container); };

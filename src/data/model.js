@@ -4,7 +4,7 @@ export const FATIGUE_MAX = 3;
 // 数量上限 + 预警阈值 + 评分系数 + 新人员默认上限：可在数据配置页「系统设置」修改（改动对已保存数据即时生效；新人员默认仅作用于新建）
 export const DEFAULT_SETTINGS = {
   dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1, preferredBonus: 15, balanceFactor: 5,
-  balanceWindowDays: 90, defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
+  balanceWindowDays: 30, defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
 };
 
 export function createProject(fields = {}) {
@@ -33,7 +33,19 @@ export function createStaff(fields = {}, defaults = {}) {
     status: fields.status ?? 'active',
     joinedAt: fields.joinedAt ?? Date.now(),   // 加入时间戳，卡片排序用
     restFrom: fields.restFrom ?? null,         // 休假前状态（'new'|'active'），开关恢复用
+    tags: fields.tags ?? [],                   // 自由文本标签（String[]，多人管理/筛选用）
   };
+}
+
+// 标签文本 → 数组：按 ; 或中文；分隔（Excel 列/粘贴串共用），trim + 去空 + 去重（保序）
+export function parseTags(text) {
+  if (!text) return [];
+  return [...new Set(String(text).split(/[;；]/).map(t => t.trim()).filter(Boolean))];
+}
+
+// 标签数组 → 文本（Excel 列/导出共用）；单标签含 ; 会破坏分隔，展开为多个
+export function formatTags(tags) {
+  return (tags ?? []).map(t => String(t).trim()).filter(Boolean).join(';');
 }
 
 export function createSchedule(fields = {}) {

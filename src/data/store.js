@@ -33,6 +33,12 @@ function removeCache(storeName, id) {
 export async function saveProject(p) { await db.put('projects', p); upsertCache('projects', p); }
 export async function saveStaff(s) { await db.put('staffs', s); upsertCache('staffs', s); }
 export async function saveSchedule(sch) { await db.put('schedules', sch); upsertCache('schedules', sch); }
+
+// 批量落盘：cache 全部更新后一次整表写回，替代循环 saveSchedule 的 N 次整表序列化
+export async function saveSchedules(list) {
+  for (const sch of list) upsertCache('schedules', sch);
+  await db.writeAll('schedules', cache.schedules);
+}
 export async function removeSchedule(id) { await db.remove('schedules', id); removeCache('schedules', id); }
 export async function removeStaff(id) { await db.remove('staffs', id); removeCache('staffs', id); }
 export async function removeProject(id) { await db.remove('projects', id); removeCache('projects', id); }

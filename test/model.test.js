@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
-         validateProject, validateStaff, reconcileStaff, SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
+         validateProject, validateStaff, reconcileStaff, parseTags, formatTags,
+         SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -89,6 +90,34 @@ test('createStaff 带默认值', () => {
   assert.equal(s.maxHeavyTaskCount, 2);
   assert.equal(typeof s.joinedAt, 'number');
   assert.equal(s.restFrom, null);
+  assert.deepEqual(s.tags, []);
+});
+
+test('createStaff 可注入标签', () => {
+  const s = createStaff({ name: '张三', tags: ['组长', '志愿者'] });
+  assert.deepEqual(s.tags, ['组长', '志愿者']);
+});
+
+test('parseTags: 分号分隔 trim 去空去重保序', () => {
+  assert.deepEqual(parseTags('组长; 值班;组长'), ['组长', '值班']);
+  assert.deepEqual(parseTags(' ; '), []);
+  assert.deepEqual(parseTags(''), []);
+  assert.deepEqual(parseTags('单标签'), ['单标签']);
+});
+
+test('parseTags: 兼容中文分号', () => {
+  assert.deepEqual(parseTags('组长；值班'), ['组长', '值班']);
+});
+
+test('formatTags: 连接为空时返回空串', () => {
+  assert.equal(formatTags([]), '');
+  assert.equal(formatTags(null), '');
+  assert.equal(formatTags(undefined), '');
+});
+
+test('formatTags: parseTags 往返不丢标签', () => {
+  const tags = ['组长', '临时工', '值班'];
+  assert.deepEqual(parseTags(formatTags(tags)), tags);
 });
 
 test('createStaff 可注入系统默认上限（设置里可改）', () => {
@@ -194,7 +223,7 @@ test('SLOT_LABELS 预置四时段标签', () => {
 test('DEFAULT_SETTINGS 默认值', () => {
   assert.deepEqual(DEFAULT_SETTINGS, {
     dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
-    preferredBonus: 15, balanceFactor: 5, balanceWindowDays: 90,
+    preferredBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
   });
 });

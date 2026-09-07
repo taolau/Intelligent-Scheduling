@@ -280,3 +280,23 @@
 - **根因**：html2canvas 按 DOM 计算尺寸截图——克隆体保留了 `flex:1 + overflow:auto`，放进无固定高度的离屏包装后仍按滚动容器语义渲染：可视区 = 有限高，内容超高部分不参与画布（被裁），而非撑开整张图
 - **解决**：克隆后显式置 `clone.style.height='auto'; clone.style.overflow='visible'`（exportScheduleImage 已统一处理），让内容按自然高度撑开长图；与 #22（onclone 改布局不扩大 canvas）同族——凡是导出的容器自带滚动/高度约束，进离屏前先解除
 - **启示**：凡导出目标元素在应用里是滚动容器（flex:1 + overflow/固定高），克隆给 html2canvas 前必须解除高度与裁剪约束；「导出图只截可视区一小段」先查克隆体是否仍带 overflow/flex 高度语义
+
+## 36. 修饰 select/input 组件基类的窄宽类必须双类提升特异性：同特异性后定义者赢
+
+- **报错**：`.asg-tag-sel { width:170px }` 声明在 theme.js，弹窗里标签多选下拉却**撑满整行全宽**（computed `width:520px`）；用户反馈「标签筛选搞这么宽」，且此现象从上轮上线就存在（170px 从未生效过，一直全宽，肉眼未察觉）
+- **场景**：`createSelect()` 返回的根节点 class 含 `sel asg-tag-sel`，想用修饰类收窄组件宽度；`.asg-name-input`（叠加在全局 `.input` 上）正常生效
+- **根因**：theme.js 中 select 组件基类 `.sel { position:relative; width:100% }` 定义在 `.asg-tag-sel`（asg 修饰段，文件前部）**之后**；两条规则特异性同为 0-1-0 → **文件顺序后定义者胜** → width 恒被 100% 覆盖。`.input.asg-name-input` 是双类（0-2-0）所以赢——单类修饰恰好踩中同特异性被后置基类反杀
+- **解决**：修饰类一律双类起步 `.sel.asg-tag-sel { width:126px }`（0-2-0 > 0-1-0，位置无关）
+- **启示**：凡修饰全局组件基类（`.sel`/`.input`/`.seg`…）的宽窄、显隐类，先查基类定义在文件中的位置——同特异性规则「后定义覆盖前定义」，基类段若在修饰段之后即静默失效；防御写法 = 修饰选择器带上基类名提升特异性，不依赖文件顺序；验收时对「声明的宽度/显隐」用 getComputedStyle 实测，勿信代码里的数值（本例 170 声明了两个月从未生效）
+
+## 35. 自建 DOM 组件的两个静默雷：insertBefore 参考节点未入树 = 弹窗打不开；fixed 浮层先 display:block 仍占 flex 位 = 测量错位
+
+- **报错 A**：给人员添加标签保存后，再点该人员「编辑」弹窗**静默不打开**（console：`NotFoundError: Failed to execute 'insertBefore' on 'Node': The node before which the new node is to be inserted is not a child of this node`）
+  - **场景**：tagsInput（标签 chip 输入组件）构造时先 `initial.forEach(addText)` 回填 chips，`addText` 内 `box.insertBefore(chip, input)`，而 `box.append(input)` 写在构造**末尾**
+  - **根因 A**：insertBefore 的参考节点 `input` 此刻尚未 append 进 `box`——不在父节点内，抛 NotFoundError；且发生在构造函数同步段 → `editStaffDialog` promise reject → **点击无任何反馈**（静默，同 pitfalls #6 族——「构造期同步错误 = 入口静默失效」）。只影响**有存量标签的人**重开弹窗（initial 非空才触发），无标签路径永远不触发，极易漏测
+  - **解决 A**：凡 `insertBefore(x, ref)`/`prepend` 等以既有节点为参考的插入，**参考节点必须已挂入同一父**；组件构造顺序 = 先挂全部骨架子节点、再回填内容
+- **报错 B**：标签候选浮层（fixed 定位）打开后与输入框**左右错位 ~56px**（面板左缘不在输入框左缘）
+  - **场景**：候选面板是 `.tag-in`（flex-wrap 容器）的直接子元素；打开时先 `display:block` 后 `position:fixed`
+  - **根因 B**：`display:block` 使面板**瞬间成为 flex 项占位**（仍参与布局），同一同步 tick 内 `getBoundingClientRect()` 量输入框时强制重排——量到的是「面板占位挤动后」的坐标；随后面板才 `position:fixed` 脱离文档流，输入框归位，面板却停在被挤动坐标 → 错位 = 面板占位宽度
+  - **解决 B**：浮层面板打开时**先置 `position:fixed` 脱离文档流、再 `display:block`**，之后测坐标才干净；凡「测量目标 rect 后 fixed 定位自身」的浮层，自身绝不能在被测容器内先参与布局
+  - **启示**：自建带浮层/回填的动态 DOM 组件，验收清单 = ①构造顺序（参考节点挂载先于内容回填）②浮层打开顺序（先脱流再显示再测量）；此类错误全走「入口静默 / 视觉偏移」，浏览器不报错、只在特定数据/交互路径触发
