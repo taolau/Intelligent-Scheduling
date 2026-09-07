@@ -5,7 +5,13 @@ export const FATIGUE_MAX = 3;
 export const DEFAULT_SETTINGS = {
   dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1, preferredBonus: 15, tagBonus: 15, balanceFactor: 5,
   balanceWindowDays: 30, defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
+  defaultMonthlyFatigue: 40, tenureLimit: 3,
 };
+
+// 月疲劳上限取值：已显式配置用逐人值；未配置（存量/Excel 缺省）跟随当前系统默认
+export function monthlyFatigueLimitOf(staff, settings = DEFAULT_SETTINGS) {
+  return staff.maxMonthlyFatigue ?? settings?.defaultMonthlyFatigue ?? DEFAULT_SETTINGS.defaultMonthlyFatigue;
+}
 
 export function createProject(fields = {}) {
   return {
@@ -31,6 +37,7 @@ export function createStaff(fields = {}, defaults = {}) {
     bannedProjects: fields.bannedProjects ?? [],       // [{projectId, reason}]
     maxWeeklyFatigue: fields.maxWeeklyFatigue ?? defaults.maxWeeklyFatigue ?? DEFAULT_SETTINGS.defaultWeeklyFatigue,
     maxHeavyTaskCount: fields.maxHeavyTaskCount ?? defaults.maxHeavyTaskCount ?? DEFAULT_SETTINGS.defaultHeavyTaskCount,
+    maxMonthlyFatigue: fields.maxMonthlyFatigue ?? defaults.maxMonthlyFatigue ?? DEFAULT_SETTINGS.defaultMonthlyFatigue,
     status: fields.status ?? 'active',
     joinedAt: fields.joinedAt ?? Date.now(),   // 加入时间戳，卡片排序用
     restFrom: fields.restFrom ?? null,         // 休假前状态（'new'|'active'），开关恢复用
@@ -108,6 +115,7 @@ export function validateStaff(s) {
     { cond: s.status === 'rest' && !['new', 'active'].includes(s.restFrom), field: 'status', msg: '休假状态需记录休假前状态（new/active）' },
     { cond: s.maxWeeklyFatigue < 1, field: 'maxWeeklyFatigue', msg: '周疲劳上限必须 >= 1' },
     { cond: s.maxHeavyTaskCount < 0, field: 'maxHeavyTaskCount', msg: '高强度次数上限必须 >= 0' },
+    { cond: s.maxMonthlyFatigue < 1, field: 'maxMonthlyFatigue', msg: '月疲劳上限必须 >= 1' },
     { cond: s.bannedProjects.some(b => !b.projectId), field: 'bannedProjects', msg: '不合适项目必须包含 projectId' },
     { cond: s.preferredProjects.some(p => !p.projectId), field: 'preferredProjects', msg: '擅长项目必须包含 projectId' },
     { cond: s.allowedProjects.some(id => s.bannedProjects.some(b => b.projectId === id)), field: 'allowedProjects', msg: '同一项目不能同时在可胜任与不合适中' },

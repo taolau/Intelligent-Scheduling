@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
          validateProject, validateStaff, reconcileStaff, parseTags, formatTags,
-         SLOT_LABELS, DEFAULT_SETTINGS } from '../src/data/model.js';
+         SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -225,6 +225,7 @@ test('DEFAULT_SETTINGS 默认值', () => {
     dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
     preferredBonus: 15, tagBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
+    defaultMonthlyFatigue: 40, tenureLimit: 3,
   });
 });
 
@@ -241,4 +242,30 @@ test('createProject 默认 bonusTags 为空数组', () => {
 test('createProject 保留传入 bonusTags', () => {
   const p = createProject({ name: 'X', bonusTags: ['组长'] });
   assert.deepEqual(p.bonusTags, ['组长']);
+});
+
+test('DEFAULT_SETTINGS 含新键：defaultMonthlyFatigue=40、tenureLimit=3', () => {
+  assert.equal(DEFAULT_SETTINGS.defaultMonthlyFatigue, 40);
+  assert.equal(DEFAULT_SETTINGS.tenureLimit, 3);
+});
+
+test('createStaff 默认月疲劳上限取自 defaultMonthlyFatigue；defaults/fields 依次覆盖', () => {
+  assert.equal(createStaff({ id: 'S1', name: '张三' }).maxMonthlyFatigue, 40);
+  const d = createStaff({ id: 'S2', name: '李四' }, { maxMonthlyFatigue: 30 });
+  assert.equal(d.maxMonthlyFatigue, 30);
+  const f = createStaff({ id: 'S3', name: '王五', maxMonthlyFatigue: 25 });
+  assert.equal(f.maxMonthlyFatigue, 25);
+});
+
+test('validateStaff：月疲劳上限 < 1 报错', () => {
+  const s = createStaff({ id: 'S1', name: '张三', maxMonthlyFatigue: 0 });
+  const r = validateStaff(s);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'maxMonthlyFatigue'));
+});
+
+test('monthlyFatigueLimitOf：显式字段优先，缺省回设置默认', () => {
+  assert.equal(monthlyFatigueLimitOf({ maxMonthlyFatigue: 22 }), 22);
+  assert.equal(monthlyFatigueLimitOf({}), 40);
+  assert.equal(monthlyFatigueLimitOf({}, { defaultMonthlyFatigue: 50 }), 50);
 });
