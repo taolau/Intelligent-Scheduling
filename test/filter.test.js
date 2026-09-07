@@ -10,8 +10,9 @@ const projectById = { P101, P102, P103 };
 
 // slot 日期 2026-08-24 恰为周一 → 周键 = 'S1|2026-08-24'
 function base() {
-  return { schedules: [], fatigueByWeek: new Map(), heavyByWeek: new Map(),
-           dailyCounts: new Map(), slotCounts: new Map(), settings: { ...DEFAULT_SETTINGS } };
+  return { schedules: [], fatigueByWeek: new Map(), heavyByWeek: new Map(), fatigueByMonth: new Map(),
+           dailyCounts: new Map(), slotCounts: new Map(), projectWeeks: new Map(), tenure: new Map(),
+           settings: { ...DEFAULT_SETTINGS } };
 }
 
 const slot = { date: '2026-08-24', projectId: 'P101', slotLabel: '早' };
@@ -215,4 +216,92 @@ test('时段任务数文案：已超与恰满区分', () => {
   ctx2.slotCounts.set('S2|2026-08-24|早', 1);
   const r2 = filterCandidate(s2, slot, projectById, ctx2);
   assert.ok(r2.reasons.some(x => x.includes('时段') && x.includes('已达上限')));
+});
+
+// —— 月疲劳上限（R1）：自然月累计（YYYY-MM），三分文案 ——
+
+test('月疲劳超限拒绝（当前未超、加入后超 → 将超限）', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'], maxMonthlyFatigue: 4 });
+  const ctx = base();
+  ctx.fatigueByMonth.set('S1|2026-08', 2); // 8 月已 2，P101 疲劳 3 → 加入后 5 > 4
+  const r = filterCandidate(s, slot, projectById, ctx); // slot date=2026-08-24 → 2026-08
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('月') && x.includes('将超限')));
+});
+
+test('月疲劳文案：已超（5/4）说已超限、恰满（4/4）说已达上限', () => {
+  const over = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'], maxMonthlyFatigue: 4 });
+  const c1 = base();
+  c1.fatigueByMonth.set('S1|2026-08', 5);
+  const r1 = filterCandidate(over, slot, projectById, c1);
+  assert.ok(r1.reasons.some(x => x.includes('月') && x.includes('已超限')));
+  assert.ok(!r1.reasons.some(x => x.includes('将超限')));
+
+  const full = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P101'], maxMonthlyFatigue: 4 });
+  const c2 = base();
+  c2.fatigueByMonth.set('S2|2026-08', 4);
+  const r2 = filterCandidate(full, slot, projectById, c2);
+  assert.ok(r2.reasons.some(x => x.includes('月') && x.includes('已达上限')));
+});
+
+test('月上限跨月隔离：上月已超不影响本月', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'], maxMonthlyFatigue: 3 });
+  const ctx = base();
+  ctx.fatigueByMonth.set('S1|2026-07', 9); // 7 月堆满，8 月照常可排
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, true);
+});
+
+test('月上限未显式字段 → 回落设置默认（40），超默认则拦', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'] }); // 无 maxMonthlyFatigue
+  const ctx = base();
+  ctx.fatigueByMonth.set('S1|2026-08', 39);
+  const r = filterCandidate(s, slot, projectById, ctx); // 39+3 = 42 > 40 → 拦
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('将超限')));
+});
+
+// —— 同任务连任上限（R2）：tenureLimit>0 生效；ctx.tenure + ctx.projectWeeks ——
+
+const ctxWithTenure = (tenureLimit, projectWeeks, occ) => {
+  const c = base();
+  c.settings = { ...DEFAULT_SETTINGS, tenureLimit };
+  c.projectWeeks = new Map(projectWeeks);
+  c.tenure = new Map(occ ? [[`S1|P101`, new Map(Object.entries(occ))]] : []);
+  return c;
+};
+
+test('连任：允许 N 期，第 N+1 期拦截', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'] });
+  const ctx = ctxWithTenure(2, [['P101', ['2026-08-17', '2026-08-24']]], { '2026-08-17': 1 });
+  // 已连任 1 期，加入本周（8-24 周一）后连续 2 期 = 2 → 恰在上限内，放行
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, true);
+
+  const c2 = ctxWithTenure(1, [['P101', ['2026-08-17', '2026-08-24']]], { '2026-08-17': 1 });
+  const r2 = filterCandidate(s, slot, projectById, c2); // 上限 1，加入后 2 期 → 拦
+  assert.equal(r2.ok, false);
+  assert.ok(r2.reasons.some(x => x.includes('连任')));
+});
+
+test('连任：tenureLimit=0 关闭该约束', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'] });
+  const ctx = ctxWithTenure(0, [['P101', ['2026-08-17', '2026-08-24']]], { '2026-08-17': 1 });
+  const r = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r.ok, true);
+});
+
+test('连任拒绝为唯一原因时 tenureOnly=true；与其他拒绝并存时 false', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'] });
+  const c = ctxWithTenure(1, [['P101', ['2026-08-17', '2026-08-24']]], { '2026-08-17': 1 });
+  const r = filterCandidate(s, slot, projectById, c);
+  assert.equal(r.ok, false);
+  assert.equal(r.tenureOnly, true);
+
+  const s2 = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P102'], bannedProjects: [{ projectId: 'P101' }] });
+  const c2 = ctxWithTenure(1, [['P101', ['2026-08-17', '2026-08-24']]], { 'S2': { '2026-08-17': 1 } });
+  c2.tenure = new Map([['S2|P101', new Map([['2026-08-17', 1]])]]);
+  const r2 = filterCandidate(s2, slot, projectById, c2); // 黑名单 + 连任双因
+  assert.equal(r2.ok, false);
+  assert.equal(r2.tenureOnly, false);
 });

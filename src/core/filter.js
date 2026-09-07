@@ -1,5 +1,6 @@
-import { DEFAULT_SETTINGS } from '../data/model.js';
+import { DEFAULT_SETTINGS, monthlyFatigueLimitOf } from '../data/model.js';
 import { getWeekStart } from './week.js';
+import { tenureRunAfterAdd } from './tenure.js';
 
 export function filterCandidate(staff, schedule, projectById, ctx) {
   const reasons = [];
@@ -45,5 +46,25 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
     }
   }
 
-  return { ok: reasons.length === 0, reasons };
+  // 月疲劳上限：自然月累计（YYYY-MM，同月粒度 chip 口径），防整月无度堆积
+  const monthFatigue = ctx.fatigueByMonth?.get(`${staff.id}|${schedule.date.slice(0, 7)}`) ?? 0;
+  const monthLimit = monthlyFatigueLimitOf(staff, ctx.settings);
+  if (monthFatigue + project.fatigueScore > monthLimit) {
+    if (monthFatigue > monthLimit) reasons.push(`本月劳累积分已超限（上限 ${monthLimit}）`);
+    else if (monthFatigue === monthLimit) reasons.push(`本月劳累积分已达上限（${monthLimit}）`);
+    else reasons.push(`本月劳累积分将超限（上限 ${monthLimit}）`);
+  }
+
+  // 同任务连任上限：tenureLimit>0 生效；允许连任 N 期，第 N+1 期强制轮换（0 = 关闭）
+  const tenureLimit = ctx.settings?.tenureLimit ?? DEFAULT_SETTINGS.tenureLimit;
+  let tenureOnly = false;
+  if (tenureLimit > 0) {
+    const run = tenureRunAfterAdd(schedule.projectId, staff.id, getWeekStart(schedule.date), ctx);
+    if (run > tenureLimit) {
+      reasons.push(`同一任务将连任 ${run} 期，超过连任上限 ${tenureLimit} 期，需轮换`);
+      tenureOnly = reasons.length === 1; // 仅因连任被拒（无其他硬规则原因）→ 供豁免探测
+    }
+  }
+
+  return { ok: reasons.length === 0, reasons, tenureOnly };
 }
