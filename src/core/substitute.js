@@ -105,20 +105,27 @@ export function narrateReasons(staff, schedule, projectById, breakdown, ctx) {
   return lines;
 }
 
-// 返回全部通过者可替补候选（按分降序，不截断）——「推荐前 3 / 其他可选」分档是弹窗界面职责，算法层给全量
+// 候选硬性过滤分池：base = 通过全部规则；tenured = 仅因连任被拒（无其他原因）。
+// 豁免语义由调用方决定：base 为空时允许 tenured 保运转（轮换上限是软轮换纪律，无人手时空班更糟）。
+export function splitEligible(staffs, schedule, projectById, ctx, excludeIds = []) {
+  const base = [];
+  const tenured = [];
+  for (const s of staffs) {
+    if (excludeIds.includes(s.id)) continue;
+    const res = filterCandidate(s, schedule, projectById, ctx);
+    if (res.ok) base.push(s);
+    else if (res.tenureOnly) tenured.push(s);
+  }
+  return { base, tenured };
+}
+
+// 返回全部通过者可替补候选（按分降序，不截断）——「推荐前 3 / 其他可选」分档是弹窗界面职责，算法层给全量。
+// 连任豁免：无其他可排人选时，仅因连任被拦者也上榜（保运转）。
 export function recommendSubstitutes(staffs, schedule, projectById, ctx, excludeStaffId) {
-  const candidates = staffs
-    .filter(s => s.id !== excludeStaffId && !schedule.staffIds.includes(s.id));
+  const { base, tenured } = splitEligible(staffs, schedule, projectById, ctx, [excludeStaffId]);
+  const selectable = base.length ? base : tenured; // 豁免：无其他人选时连任者保运转
   const scored = [];
-  for (const staff of candidates) {
-    const res = filterCandidate(staff, schedule, projectById, {
-      fatigueByWeek: ctx.fatigueByWeek,
-      heavyByWeek: ctx.heavyByWeek,
-      dailyCounts: ctx.dailyCounts,
-      slotCounts: ctx.slotCounts,
-      settings: ctx.settings,
-    });
-    if (!res.ok) continue;
+  for (const staff of selectable) {
     const { score, breakdown } = scoreCandidate(staff, schedule, projectById, {
       fatigueWindow: ctx.fatigueWindow,
       teamAvg: ctx.teamAvg,

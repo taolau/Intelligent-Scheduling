@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx } from '../src/core/substitute.js';
-import { createStaff, createProject, createSchedule } from '../src/data/model.js';
+import { createStaff, createProject, createSchedule, DEFAULT_SETTINGS } from '../src/data/model.js';
 
 const P101 = createProject({ id: 'P101', name: '搬运', fatigueScore: 2, slots: [{ label: '上午', startTime: '08:00', endTime: '12:00' }] });
 const projectById = { P101 };
@@ -232,4 +232,15 @@ test('cloneCtx 深拷贝 projectWeeks/tenure：改克隆不影响源 ctx', () =>
   cl.tenure.get('S1|P1').set('2026-09-07', 1);
   assert.equal(ctx.projectWeeks.get('P1').length, 1);
   assert.equal(ctx.tenure.get('S1|P1').has('2026-09-07'), false);
+});
+
+test('recommendSubstitutes: base 空时连任者豁免上榜', () => {
+  const a = createStaff({ id: 'A', name: 'A', allowedProjects: ['P101'] });
+  // A 上周（8/17）已占 P101；8/24 再排即连任第 2 期，tenureLimit=1 → 本被拦；但只有 A 会 P101 → 豁免上榜
+  const prev = { date: '2026-08-17', projectId: 'P101', slotLabel: '上午', staffIds: ['A'] };
+  const ctx = buildContext([a], [prev], { P101 }, { ...DEFAULT_SETTINGS, tenureLimit: 1 }, '2026-08-24');
+  const sch = { date: '2026-08-24', projectId: 'P101', slotLabel: '上午', staffIds: [] };
+  const out = recommendSubstitutes([a], sch, { P101 }, ctx, 'Z');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].staff.id, 'A');
 });

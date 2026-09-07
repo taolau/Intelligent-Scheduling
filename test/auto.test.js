@@ -96,3 +96,43 @@ test('simulateAutoFill: 孤儿班次（任务已被删/缺失）不抛错、跳�
   assert.equal(r.added.length, 0);
   assert.deepEqual(r.sch.staffIds, []);
 });
+
+// —— 连任（R2）在自动填充中的感知与豁免：ctx.schedules 需含已铺好的空壳班（projectWeeks 才有发生周）——
+
+test('simulateAutoFill: 连任触发换人（与均衡解耦对照）— tenureLimit=1 第 2 周换 B、=0 时仍 A', () => {
+  const staffs = [mkStaff('A'), mkStaff('B')];
+  // P0 无关项目让 B 在公平窗口先有 1 分（9-13），使第 2 班决策时 A/B 窗口同分→ 无连任时平局按序取 A
+  const byId = {
+    P1: { ...P1, requiredCapacity: 1 },
+    P0: createProject({ id: 'P0', name: '杂活', fatigueScore: 1, slots: [{ label: '自主安排' }] }),
+  };
+  const mk = (id, date) => createSchedule({ id, date, projectId: 'P1', slotLabel: '自主安排' });
+  const s1 = mk('S1', '2026-09-07'); // 周1
+  const s2 = mk('S2', '2026-09-14'); // 周2（两空壳都在 schedules，形成两"有发生周"）
+  const prevB = createSchedule({ id: 'SB', date: '2026-09-13', projectId: 'P0', slotLabel: '自主安排', staffIds: ['B'] });
+  const mkC = lim => {
+    const c = mkCtx(staffs, [s1, s2, prevB], byId);
+    c.settings = { ...DEFAULT_SETTINGS, tenureLimit: lim };
+    return c;
+  };
+  const [a1, a2] = simulateAutoFill([s1, s2], staffs, byId, mkC(1)); // 连任开：A 已连任 1 期达上限
+  assert.deepEqual(a1.sch.staffIds, ['A']);
+  assert.deepEqual(a2.sch.staffIds, ['B']);
+
+  const [b1, b2] = simulateAutoFill([s1, s2], staffs, byId, mkC(0)); // 连任关：均衡平局按序仍 A
+  assert.deepEqual(b1.sch.staffIds, ['A']);
+  assert.deepEqual(b2.sch.staffIds, ['A']);
+});
+
+test('simulateAutoFill: 连任豁免 — 无他人可选时允许同一人连任保运转', () => {
+  const staffs = [mkStaff('A')]; // 只有 A 会 P1
+  const byId = { P1: { ...P1, requiredCapacity: 1 } };
+  const mk = (id, date) => createSchedule({ id, date, projectId: 'P1', slotLabel: '自主安排' });
+  const s1 = mk('S1', '2026-09-07');
+  const s2 = mk('S2', '2026-09-14');
+  const ctx = mkCtx(staffs, [s1, s2], byId);
+  ctx.settings = { ...DEFAULT_SETTINGS, tenureLimit: 1 };
+  const [r1, r2] = simulateAutoFill([s1, s2], staffs, byId, ctx);
+  assert.deepEqual(r1.sch.staffIds, ['A']);
+  assert.deepEqual(r2.sch.staffIds, ['A']); // base 空（无人会 P1）→ 豁免 A 连任
+});
