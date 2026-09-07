@@ -60,11 +60,14 @@ const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M9 18l6-6-6-6"/></svg>';
 const ICON_ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>';
 const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
 
-export async function renderCalendar(container) {
+export async function renderCalendar(container, opts = {}) {
+  // 批量删除多选态：任何外部触发/重渲染自动退出（本态进入/退出自渲染走 opts.keepBatch）
+  if (batchDeleteActive && !opts.keepBatch) exitBatchState();
   data = getCache();
   // 过滤视图目标已被删除时回退总览（状态是渲染参数而非 DOM 反读，操作后重渲染不丢失维度）
   if (viewMode === 'project' && !data.projects.some(p => p.id === viewTargetId)) { viewMode = 'overview'; viewTargetId = ''; persistViewState(); }
@@ -169,19 +172,33 @@ export async function renderCalendar(container) {
   label.textContent = monthScale ? monthAnchor : getWeekLabel(currentWeekStart);
   const todayBtn = btn(monthScale ? '本月' : '本周');
   const autoBtn = btn('智能排班', true, false, ICON_ZAP), bulkBtn = btn('批量铺排', false, false, ICON_BULK);
+  autoBtn.className = 'btn btn-soft'; // 主操作淡紫款（同备份导出钮/替换确认钮），工具栏其余为 btn-default 白款
+  const delBatchBtn = btn('批量删除', false, false, ICON_TRASH);
   // 导出图片：直接按钮（无下拉）；周 = 当前周面板，月 = 整月视图长图（含首尾灰显邻月日）
   const exportBtn = btn('导出图片', false, false, ICON_IMAGE);
   left.append(prev, label, next, todayBtn);
-  // 人员维度为只读视图：隐藏智能排班/批量铺排（导出仍可用，截图跟随当前视图）
+  // 人员维度为只读视图：隐藏 智能排班/批量铺排/批量删除（导出仍可用，截图跟随当前视图）
   if (viewMode === 'staff') right.append(exportBtn);
-  else right.append(autoBtn, bulkBtn, exportBtn);
+  else right.append(autoBtn, bulkBtn, delBatchBtn, exportBtn);
   bar.append(left, right);
   container.appendChild(bar);
+  if (batchDeleteActive) container.appendChild(buildBatchBar());
 
   prev.onclick = () => navShift(-1);
   next.onclick = () => navShift(1);
   todayBtn.onclick = () => gotoNow();
   autoBtn.onclick = () => smartPlanDialog();
+  delBatchBtn.onclick = () => {
+    batchDeleteActive = true;
+    batchSel.clear();
+    renderCalendar(container, { keepBatch: true });
+    // 当前可见区无可删班次（空周/空月/空态）→ 退出并提示，避免空选择态
+    if (!document.querySelectorAll('.cal-slot-card .sch-card.selectable').length) {
+      exitBatchState();
+      renderCalendar(container);
+      showToast('当前视图没有可删除的班次', 'info');
+    }
+  };
   bulkBtn.onclick = () => bulkPlanDialog();
   exportBtn.onclick = async () => {
     const isMonth = timeScale === 'month';
@@ -440,7 +457,17 @@ function renderScheduleCard(sch, readOnly = false) {
   const filled = sch.staffIds.length;
   if (filled >= capacity) card.classList.add('full');
   else if (filled > 0) card.classList.add('short');
-  if (!readOnly) {
+  if (batchDeleteActive && !readOnly) {
+    // 批量删除态：整卡点击即勾选/取消（不打开分配弹窗），右上角勾选点随选中填充
+    card.classList.add('selectable');
+    card.title = batchSel.has(sch.id) ? '取消选择该班次' : '选择该班次（可多选，点卡片切换）';
+    if (batchSel.has(sch.id)) card.classList.add('selected');
+    card.onclick = () => toggleBatchSel(sch.id, card);
+    const tick = document.createElement('span');
+    tick.className = 'sch-sel-tick';
+    tick.textContent = '✓';
+    card.appendChild(tick);
+  } else if (!readOnly) {
     card.title = '点击手动分配人员';
     card.onclick = () => scheduleDialog(sch);
     // 落点精确到卡片：拖到哪张任务卡片，人就进哪个班次（同格多班次不再取第一个）
@@ -478,10 +505,11 @@ function renderScheduleCard(sch, readOnly = false) {
     chip.className = staffChipClass(staff, sch.date);
     chip.title = staffChipTitle(staff, sch.date);
     chip.append(document.createTextNode(staff?.name ?? sid));
-    if (!readOnly) { // 只读视图：不可拖拽，仍可点击人名进入替换弹窗
+    if (!readOnly && !batchDeleteActive) { // 只读/批量删除态：不可拖拽
       enableDrag(chip, { onDragStart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ staffId: sid, scheduleId: sch.id })); } });
     }
-    chip.onclick = (e) => { e.stopPropagation(); openReplaceDialog(staff, sch); };
+    // 批量删除态：人名不单独开替换——点击事件冒泡到卡片即勾选；只读（人员维度）仍可点人名替换
+    if (!batchDeleteActive) chip.onclick = (e) => { e.stopPropagation(); openReplaceDialog(staff, sch); };
     names.appendChild(chip);
   }
   card.appendChild(names);
@@ -492,7 +520,7 @@ function renderScheduleCard(sch, readOnly = false) {
     const cap = document.createElement('div');
     cap.className = 'sch-capacity';
     cap.textContent = filled === 0 ? `需 ${capacity} 人` : `缺 ${capacity - filled} 人`;
-    if (!readOnly) {
+    if (!readOnly && !batchDeleteActive) {
       // 底部一行：需/缺 N 人（左）+ 智能排班小图标（右）；闪电与工具栏「智能排班」同款
       // 条件与智能排班对齐：未满员即逐名额填充，非仅空班次（原 filled===0，手动加 1 人后闪电消失）
       const row = document.createElement('div');
@@ -520,6 +548,89 @@ function applyDelta(ctxObj, sid, sch, sign) {
   if (project) accumulateDelta(ctxObj, project, sch, sid, sign);
 }
 
+// ===== 批量删除多选态 =====
+let batchDeleteActive = false;
+const batchSel = new Set(); // 选中的班次 sch.id
+
+function exitBatchState() { batchDeleteActive = false; batchSel.clear(); }
+
+function toggleBatchSel(schId, card) {
+  if (batchSel.has(schId)) {
+    batchSel.delete(schId);
+    card.classList.remove('selected');
+    card.title = '选择该班次（可多选，点卡片切换）';
+  } else {
+    batchSel.add(schId);
+    card.classList.add('selected');
+    card.title = '取消选择该班次';
+  }
+  const n = batchSel.size;
+  const del = document.querySelector('.cal-batch-del');
+  const cnt = document.querySelector('.cal-batch-count');
+  if (del) { del.disabled = n === 0; del.textContent = `删除所选 (${n})`; }
+  if (cnt) cnt.textContent = String(n);
+}
+
+function batchDeleteConfirm() {
+  const ids = [...batchSel];
+  if (!ids.length) return;
+  const previews = ids.slice(0, 5).map(id => {
+    const s = data.schedules.find(x => x.id === id);
+    const p = data.projects.find(x => x.id === s?.projectId);
+    return s ? `${s.date.slice(5)} · ${s.slotLabel} · ${p?.name ?? s.projectId}` : '';
+  }).filter(Boolean).join('\n');
+  const more = ids.length > 5 ? `\n… 等共 ${ids.length} 个` : '';
+  confirmDialog({
+    title: '批量删除班次',
+    message: `确认删除所选 ${ids.length} 个班次？删除后不可恢复。\n其中已排人员将从当日任务数与周/月疲劳计数中回退。\n${previews}${more}`,
+    boxClass: 'box-confirm-wide', // 预览多行排版需更宽（Tao 反馈）
+    okClass: 'btn-soft', // 确认钮淡紫款（同恢复确认，勿红——Tao 定）
+    confirmText: `删除所选 ${ids.length} 个`,
+    onConfirm: async () => {
+      for (const id of ids) {
+        const s = data.schedules.find(x => x.id === id);
+        if (!s) continue;
+        for (const sid of s.staffIds) applyDelta(ctx, sid, s, -1); // 三轨回退（唯一实现 accumulateDelta）
+        await removeSchedule(id);
+      }
+      exitBatchState();
+      showToast(`已删除 ${ids.length} 个班次`, 'success');
+      renderCalendar(document.querySelector('#view'));
+    },
+  });
+}
+
+function buildBatchBar() {
+  const bar = document.createElement('div');
+  bar.className = 'cal-batch-bar';
+  const tip = document.createElement('div');
+  tip.className = 'cal-batch-tip';
+  const pre = document.createElement('span');
+  pre.textContent = '批量删除 · 已选 ';
+  const cnt = document.createElement('b');
+  cnt.className = 'cal-batch-count';
+  cnt.textContent = '0';
+  const post = document.createElement('span');
+  post.textContent = ' 个班次，点卡片勾选/取消';
+  tip.append(pre, cnt, post);
+  const right = document.createElement('div');
+  right.className = 'cal-batch-right';
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn btn-danger cal-batch-del';
+  del.textContent = '删除所选 (0)';
+  del.disabled = true;
+  del.onclick = () => batchDeleteConfirm();
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn-default';
+  cancel.textContent = '取消';
+  cancel.onclick = () => { exitBatchState(); renderCalendar(document.querySelector('#view')); };
+  right.append(del, cancel);
+  bar.append(tip, right);
+  return bar;
+}
+
 function scheduleDialog(sch) {
   const project = data.projects.find(p => p.id === sch.projectId);
   const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
@@ -529,42 +640,62 @@ function scheduleDialog(sch) {
   let tagFilter = []; // 候选标签多选过滤（弹窗级临时，视图层过滤不参与算法）
   let nameQuery = ''; // 候选名称搜索（同弹窗级临时，与 tagFilter 叠加为与关系）
   const allTags = () => [...new Set(data.staffs.flatMap(s => s.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
-  const delBtn = document.createElement('button');
-  delBtn.type = 'button';
-  delBtn.className = 'btn btn-danger';
-  delBtn.textContent = '删除班次';
-  delBtn.title = '删除该班次，已排人员计数自动回退';
-  delBtn.onclick = () => {
-    confirmDialog({
-      title: '删除班次',
-      message: '确认删除该班次？已排人员将从当天任务数与本周疲劳计数中回退。',
-      onConfirm: async () => { delBtn.disabled = true; await deleteSchedule(); },
-    });
+
+  // 暂存模型：draft = 工作副本、dctx = 弹窗内演进 ctx——本弹窗不写真实 sch/ctx。
+  // 点「确认保存」才按净差写真实 ctx 并 saveSchedule；直接关闭/ESC = 放弃本次改动（不落库）。
+  const origStaffIds = [...sch.staffIds];
+  const draft = { ...sch, staffIds: [...sch.staffIds] };
+  const dctx = cloneCtx(ctx);
+  const dirty = () => {
+    if (origStaffIds.length !== draft.staffIds.length) return true;
+    const o = new Set(origStaffIds);
+    return draft.staffIds.some(id => !o.has(id));
   };
-  footer.appendChild(delBtn);
+
+  const okBtn = document.createElement('button');
+  okBtn.type = 'button';
+  okBtn.className = 'btn btn-primary';
+  okBtn.textContent = '确认保存';
+  okBtn.title = '把本次加/移的人员一次性落库（无改动时不可用）';
+  okBtn.disabled = true;
+  footer.appendChild(okBtn);
   const modal = openModal({ title: '排班分配', body, footer });
 
-  async function deleteSchedule() {
-    for (const sid of sch.staffIds) applyDelta(ctx, sid, sch, -1);
-    await removeSchedule(sch.id);
+  okBtn.onclick = async () => {
+    const o = new Set(origStaffIds);
+    const added = draft.staffIds.filter(id => !o.has(id));        // 净增
+    const removed = origStaffIds.filter(id => !draft.staffIds.includes(id)); // 净减
+    for (const sid of removed) applyDelta(ctx, sid, draft, -1);
+    for (const sid of added) applyDelta(ctx, sid, draft, +1);
+    await saveSchedule(draft);
     modal.close();
-    showToast('班次已删除', 'success');
+    const parts = [];
+    if (added.length) parts.push(`新增 ${added.length}`);
+    if (removed.length) parts.push(`移出 ${removed.length}`);
+    showToast(parts.length ? `已保存 · ${parts.join('、')}` : '已保存', 'success');
+    const warnDaily = ctx.settings?.warnDailyCount ?? 0;
+    if (warnDaily > 0) {
+      const warns = added.filter(id => (ctx.dailyCounts.get(`${id}|${draft.date}`) ?? 0) >= warnDaily)
+        .map(id => data.staffs.find(s => s.id === id)?.name ?? id);
+      if (warns.length) showToast(`${warns.join('、')} 当日已达预警阈值 ${warnDaily} 个任务`, 'info');
+    }
     renderCalendar(document.querySelector('#view'));
-  }
+  };
+  function syncDirty() { okBtn.disabled = !dirty(); }
 
   function renderBody() {
     body.innerHTML = '';
-    const filled = sch.staffIds.length;
+    const filled = draft.staffIds.length;
     const full = filled >= capacity;
 
     const head = document.createElement('div');
     head.className = 'asg-head';
     const titleRow = document.createElement('div');
     titleRow.className = 'asg-title';
-    titleRow.innerHTML = `<span>${project?.name ?? sch.projectId}</span>${project ? `<span class="sch-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
+    titleRow.innerHTML = `<span>${project?.name ?? draft.projectId}</span>${project ? `<span class="sch-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
     const sub = document.createElement('div');
     sub.className = 'asg-sub';
-    sub.innerHTML = `${sch.date} · ${sch.slotLabel}${project?.timeRange ? ` · ${project.timeRange.start}–${project.timeRange.end}` : ''}`;
+    sub.innerHTML = `${draft.date} · ${draft.slotLabel}${project?.timeRange ? ` · ${project.timeRange.start}–${project.timeRange.end}` : ''}`;
     head.append(titleRow, sub);
 
     const progress = document.createElement('div');
@@ -587,14 +718,14 @@ function scheduleDialog(sch) {
     chips.className = 'asg-chips';
     function renderChips() {
       chips.innerHTML = '';
-      if (sch.staffIds.length === 0) {
+      if (draft.staffIds.length === 0) {
         const empty = document.createElement('span');
         empty.className = 'asg-empty';
         empty.textContent = '暂无人员，从下方选择加入';
         chips.appendChild(empty);
         return;
       }
-      for (const sid of sch.staffIds) chips.appendChild(makeChip(sid));
+      for (const sid of draft.staffIds) chips.appendChild(makeChip(sid));
     }
     function makeChip(sid) {
       const staff = data.staffs.find(s => s.id === sid);
@@ -607,18 +738,17 @@ function scheduleDialog(sch) {
       rm.className = 'asg-chip-x';
       rm.title = '移除';
       rm.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-      rm.onclick = async () => {
-        sch.staffIds = sch.staffIds.filter(id => id !== sid);
-        applyDelta(ctx, sid, sch, -1);
-        await saveSchedule(sch);
-        renderBody(); // 移除走整窗重绘：被移者重回候选、各区状态复位
-        renderCalendar(document.querySelector('#view'));
+      rm.onclick = () => { // 暂存移除（不落库）：整窗重绘，被移者按 dctx 重算回候选
+        draft.staffIds = draft.staffIds.filter(id => id !== sid);
+        applyDelta(dctx, sid, draft, -1);
+        syncDirty();
+        renderBody();
       };
       chip.append(chipName, rm);
       return chip;
     }
     function updateProgressBar() {
-      const filled = sch.staffIds.length;
+      const filled = draft.staffIds.length;
       const full = filled >= capacity;
       bar.classList.toggle('full', full);
       fillEl.style.width = `${Math.min(100, (filled / capacity) * 100)}%`;
@@ -687,8 +817,8 @@ function scheduleDialog(sch) {
       const availEntries = []; // 可添加候选 {staff,row,info}，按推荐分排序
       let limitedOpen = false;
       for (const s of data.staffs) {
-        if (sch.staffIds.includes(s.id)) continue; // 已在班者进上方 chips，不重复作候选
-        const res = filterCandidate(s, sch, projectById, ctx);
+        if (draft.staffIds.includes(s.id)) continue; // 已在班者进上方 chips，不重复作候选
+        const res = filterCandidate(s, draft, projectById, dctx);
         const row = document.createElement('div');
         row.className = 'assign-row' + (res.ok ? ' pickable' : ' blocked');
         row.dataset.name = s.name;
@@ -706,19 +836,23 @@ function scheduleDialog(sch) {
         if (res.ok) {
           const info = document.createElement('span');
           info.className = 'assign-info';
-          info.textContent = `周疲劳 ${ctx.fatigueByWeek.get(`${s.id}|${getWeekStart(sch.date)}`) ?? 0}/${s.maxWeeklyFatigue}`;
-          row.append(name, info); // 无右侧常驻「＋ 添加」（点击整行即加，不再占位）
-          const { score, breakdown } = scoreCandidate(s, sch, projectById, ctx);
+          info.textContent = `周疲劳 ${dctx.fatigueByWeek.get(`${s.id}|${getWeekStart(draft.date)}`) ?? 0}/${s.maxWeeklyFatigue}`;
+          const { score, breakdown } = scoreCandidate(s, draft, projectById, dctx);
           row.dataset.score = String(score);
+          // 分徽章（学替换候选卡）+ 周疲劳小字右置：主行信息更直观；行点击仍为暂存加/取消
+          const scoreEl = document.createElement('span');
+          scoreEl.className = 'assign-score';
+          scoreEl.textContent = `${Math.round(score)} 分`;
+          row.append(name, scoreEl, info);
           // 优选理由副行（同替换弹窗人话规则）：擅长原因 / 窗口偏少建议优先等，选人依据更清晰
-          const reco = narrateReasons(s, sch, projectById, breakdown, ctx);
+          const reco = narrateReasons(s, draft, projectById, breakdown, dctx);
           if (reco.length) {
             const re = document.createElement('span');
             re.className = 'assign-reco';
             re.textContent = reco.join('；');
             row.appendChild(re);
           }
-          availEntries.push({ staff: s, row, info });
+          availEntries.push({ staff: s, row, info, scoreEl });
         } else {
           const why = document.createElement('span');
           why.className = 'assign-why';
@@ -732,7 +866,7 @@ function scheduleDialog(sch) {
       // 可添加按推荐分（擅长 + 窗口均衡）降序；stable 保持同分原序
       availEntries.sort((a, b) => (Number(b.row.dataset.score) || 0) - (Number(a.row.dataset.score) || 0));
       for (const it of availEntries) listAvail.appendChild(it.row);
-      const fullNow = () => sch.staffIds.length >= capacity;
+      const fullNow = () => draft.staffIds.length >= capacity;
       const syncNoSlot = () => { // 满员后其余未选行置灰禁点
         const f = fullNow();
         for (const it of availEntries) {
@@ -747,13 +881,18 @@ function scheduleDialog(sch) {
           && (!tagFilter.length || tagFilter.every(t => JSON.parse(row.dataset.tags || '[]').includes(t)));
         let addable = 0;
         let any = false;
+        let topIt = null; // 最高分徽章随「可见且可点」动态转移：已选/置灰/被过滤不占位（学替换 Top1 观感）
         for (const it of availEntries) {
           const r = it.row;
           const hit = hitOf(r);
           r.style.display = hit ? '' : 'none';
           if (hit) any = true;
-          if (hit && !r.classList.contains('picked') && !r.classList.contains('no-slot')) addable++;
+          if (hit && !r.classList.contains('picked') && !r.classList.contains('no-slot')) {
+            addable++;
+            if (!topIt) topIt = it;
+          }
         }
+        for (const it of availEntries) it.scoreEl.classList.toggle('top', it === topIt);
         let limited = 0;
         for (const r of listLimited.querySelectorAll('.assign-row')) {
           const hit = hitOf(r);
@@ -776,29 +915,25 @@ function scheduleDialog(sch) {
       };
       nameInput.addEventListener('input', () => { nameQuery = nameInput.value.trim(); refresh(); });
       headLimited.onclick = () => { limitedOpen = !limitedOpen; refresh(); };
-      const unselect = async ({ staff, row, info }) => {
-        if (!sch.staffIds.includes(staff.id)) return;
-        sch.staffIds = sch.staffIds.filter(id => id !== staff.id);
-        applyDelta(ctx, staff.id, sch, -1);
-        await saveSchedule(sch);
+      const unselect = ({ staff, row, info }) => {
+        if (!draft.staffIds.includes(staff.id)) return;
+        draft.staffIds = draft.staffIds.filter(id => id !== staff.id);
+        applyDelta(dctx, staff.id, draft, -1);
         pickedRows.delete(staff.id);
         row.classList.remove('picked');
-        info.textContent = `周疲劳 ${ctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(sch.date)}`) ?? 0}/${staff.maxWeeklyFatigue}`;
+        info.textContent = `周疲劳 ${dctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(draft.date)}`) ?? 0}/${staff.maxWeeklyFatigue}`;
         renderChips();
         updateProgressBar();
         refresh(); // 取消后不再满员则其余 no-slot 自动解除
-        showToast(`${staff.name} 已取消`, 'info');
-        renderCalendar(document.querySelector('#view'));
+        syncDirty();
       };
-      const pick = async ({ staff, row, info }) => {
+      const pick = ({ staff, row, info }) => {
         if (row.classList.contains('no-slot')) return; // 他人满员置灰禁点
-        if (row.classList.contains('picked')) { await unselect({ staff, row, info }); return; } // 再点一次 = 取消选中
-        if (sch.staffIds.length >= capacity) return;
-        sch.staffIds.push(staff.id);
-        applyDelta(ctx, staff.id, sch, 1);
-        const dailyAfter = ctx.dailyCounts.get(`${staff.id}|${sch.date}`) ?? 0;
-        await saveSchedule(sch);
-        // 点行即加：行保留「已选」高亮不再整窗重绘，仅局部更新 chips/进度/区计数
+        if (row.classList.contains('picked')) { unselect({ staff, row, info }); return; } // 再点一次 = 取消选中
+        if (draft.staffIds.length >= capacity) return;
+        draft.staffIds.push(staff.id);
+        applyDelta(dctx, staff.id, draft, 1);
+        // 点行即加：行保留「已选」高亮不再整窗重绘，仅局部更新 chips/进度/区计数（暂存，不落库）
         pickedRows.set(staff.id, row);
         row.classList.add('picked');
         row.classList.remove('no-slot');
@@ -806,12 +941,7 @@ function scheduleDialog(sch) {
         renderChips();
         updateProgressBar();
         refresh();
-        if ((ctx.settings?.warnDailyCount ?? 0) > 0 && dailyAfter >= (ctx.settings?.warnDailyCount ?? 0)) {
-          showToast(`${staff.name} 当日已达预警阈值 ${ctx.settings.warnDailyCount} 个任务`, 'info');
-        } else {
-          showToast(`${staff.name} 已加入`, 'success');
-        }
-        renderCalendar(document.querySelector('#view'));
+        syncDirty();
       };
       for (const it of availEntries) it.row.onclick = () => pick(it);
       refresh();

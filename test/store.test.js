@@ -84,3 +84,32 @@ test('resetAll 清空全部', async () => {
   await store.resetAll();
   assert.equal(store.getCache().staffs.length, 0);
 });
+
+test('exportJSON 含系统参数，round-trip 恢复一致', async () => {
+  store.saveSettings({ tagBonus: 25, balanceWindowDays: 60 });
+  const json = JSON.parse(await store.exportJSON());
+  assert.equal(json.settings.tagBonus, 25);
+  assert.equal(json.settings.balanceWindowDays, 60);
+  // 模拟换机：重置清空后从备份恢复
+  await store.resetAll();
+  assert.equal(store.getSettings().tagBonus, 15); // 已回默认
+  const r = await store.importJSON(JSON.stringify(json));
+  assert.equal(r.ok, true);
+  assert.equal(store.getSettings().tagBonus, 25);
+  assert.equal(store.getSettings().balanceWindowDays, 60);
+});
+
+test('importJSON 旧备份无 settings：保留本机当前参数', async () => {
+  store.saveSettings({ tagBonus: 30 });
+  const r = await store.importJSON(JSON.stringify({ projects: [], staffs: [], schedules: [] }));
+  assert.equal(r.ok, true);
+  assert.equal(store.getSettings().tagBonus, 30);
+});
+
+test('resetAll 清空系统参数（settings 归业务数据）', async () => {
+  store.saveSettings({ preferredBonus: 20, tagBonus: 25 });
+  await store.resetAll();
+  const s = store.getSettings();
+  assert.equal(s.preferredBonus, 15);
+  assert.equal(s.tagBonus, 15);
+});

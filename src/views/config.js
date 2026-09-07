@@ -662,6 +662,7 @@ async function renderProjects(head, scroll) {
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
         <div class="cfg-row"><span class="k">时间段</span><span class="v">${timeRange}</span></div>
+        <div class="cfg-row"><span class="k">加分标签</span><span class="v">${(p.bonusTags ?? []).length ? p.bonusTags.map(t => `<span class="tag">${esc(t)}</span>`).join('') : '<span class="empty">—</span>'}</span></div>
         <div class="cfg-row"><span class="k">任务说明</span><span class="v">${p.description ? `<span class="v-text" title="${esc(p.description)}">${esc(p.description)}</span>` : '<span class="empty">—</span>'}</span></div>
       </div>
       <div class="cfg-card-ops">
@@ -795,6 +796,8 @@ function taskViewMetaHTML(p) {
 async function editProjectDialog(project) {
   const target = project ?? createProject({});
   const body = document.createElement('div');
+  const { staffs } = getCache();
+  const tagPool = [...new Set(staffs.flatMap(s => s.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
 
   const nameInput = document.createElement('input');
   nameInput.className = 'input';
@@ -895,12 +898,29 @@ async function editProjectDialog(project) {
   descInput.placeholder = '任务情况、注意事项等（选填）';
   const descF = field({ label: '任务说明', control: descInput });
 
+  const bonusTagsCtrl = tagsInput({
+    initial: target.bonusTags ?? [],
+    options: tagPool,
+    allowCreate: false,
+    placeholder: tagPool.length ? '点击选择已有标签（可多个）' : '暂无可选人员标签',
+  });
+  const bonusTagsF = field({
+    label: '加分标签（命中即加分）',
+    control: bonusTagsCtrl,
+    hint: tagPool.length
+      ? '从人员已有标签中选择；带这些标签的人员排此任务时每个标签加分（分值见「系统设置」）'
+      : '先在「人员管理」给人员添加标签，才可在此选择',
+  });
+
   const fatigueCapRow = document.createElement('div');
   fatigueCapRow.style.cssText = 'display:flex;gap:10px;';
   fatigueF.wrap.style.flex = '1';
   capF.wrap.style.flex = '1';
   fatigueCapRow.append(fatigueF.wrap, capF.wrap);
-  body.append(nameF.wrap, activeF.wrap, fatigueCapRow, daysF.wrap, slotsF.wrap, timeF.wrap, descF.wrap);
+  const headPair = document.createElement('div');
+  headPair.className = 'field-pair';
+  headPair.append(nameF.wrap, activeF.wrap);
+  body.append(headPair, fatigueCapRow, daysF.wrap, slotsF.wrap, timeF.wrap, bonusTagsF.wrap, descF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -928,6 +948,7 @@ async function editProjectDialog(project) {
       active: activeSel.value === 'true',
       timeRange: start && end ? { start, end } : null,
       description: descInput.value.trim(),
+      bonusTags: bonusTagsCtrl.value,
     });
     const v = validateProject(draft);
     if (!v.valid) {
@@ -1007,6 +1028,8 @@ const SET_GROUPS = [
     items: [
       { key: 'preferredBonus', name: '擅长加分', min: 1,
         hint: '命中此人所擅长项目时加的分（擅长名单带原因，在人员编辑弹窗维护）。分值越大，越优先用熟练的人。' },
+      { key: 'tagBonus', name: '标签加分', min: 1,
+        hint: '命中任务加分标签时每个标签加的分（命中多个标签累加）。加分标签在任务编辑弹窗维护，只能选人员已有标签。分值越大越优先用带标签的人。' },
       { key: 'balanceFactor', name: '均衡系数', min: 1,
         hint: '均衡加分 = (团队窗口平均 − 本人窗口疲劳) × 系数，可为负。窗口见「公平参考窗口」。系数越大越优先排窗口内干得少的人；越小越偏向熟手优先。' },
       { key: 'balanceWindowDays', name: '公平参考窗口（天）', min: 7, max: 365,
@@ -1039,8 +1062,9 @@ const RULE_SECS = [
   },
   {
     h: '推荐给谁：打分排序',
-    formula: '总分 = 擅长加分 + (团队窗口平均 − 本人窗口疲劳) × 均衡系数',
+    formula: '总分 = 擅长加分 + 标签加分 + (团队窗口平均 − 本人窗口疲劳) × 均衡系数',
     items: [
+      '任务配了加分标签时，凡带命中标签的人员每个标签各加分（可多个累加）；加分标签取自全库人员已有标签',
       '低于平均得正分 → 优先排（近期干得少的先上）；高于平均得负分 → 往后排（干得多的先歇）',
       '窗口 = 今天回看 N 天内的已排班次（未来已排定的也算），N 即左侧「公平参考窗口」；窗口外旧账不进均衡',
       '团队平均只统计参与状态人员；新入按平均计（不加不减），休假 / 已退出不计入',

@@ -42,10 +42,15 @@ export async function saveSchedules(list) {
 export async function removeSchedule(id) { await db.remove('schedules', id); removeCache('schedules', id); }
 export async function removeStaff(id) { await db.remove('staffs', id); removeCache('staffs', id); }
 export async function removeProject(id) { await db.remove('projects', id); removeCache('projects', id); }
-export async function resetAll() { await db.clearAll(); await loadAll(); }
+export async function resetAll() {
+  await db.clearAll();
+  localStorage.removeItem(KEYS.settings); // settings 已归业务数据，重置一并清空
+  await loadAll();
+}
 
 export async function exportJSON() {
-  return JSON.stringify(cache, null, 2);
+  // settings 为单例对象（非 STORES 数组表），手动并入导出负载；UI 状态（cal_view 等）属本机偏好不进备份
+  return JSON.stringify({ ...cache, settings: getSettings() }, null, 2);
 }
 
 export async function importJSON(text) {
@@ -56,6 +61,8 @@ export async function importJSON(text) {
       if (!Array.isArray(data[key])) return { ok: false, message: `缺少 ${key} 数组` };
     }
     await Promise.all(Object.keys(cache).map(name => db.writeAll(name, data[name])));
+    // settings：旧备份无该字段则保留本机当前参数（向后兼容）；有则规整后覆盖写回
+    if (data.settings && typeof data.settings === 'object') saveSettings(data.settings);
     await loadAll();
     return { ok: true, message: '导入成功' };
   } catch (e) {

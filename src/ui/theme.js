@@ -73,14 +73,16 @@ const css = `
 .asg-tag-sel .sel-tag > span { display:block; max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } /* 单标签文字超长省略，× 保留可移除 */
 .input.asg-name-input { width:110px; flex-shrink:0; min-height:28px; padding:3px 9px;
   border-radius:7px; font-size:12px; }
-.assign-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:7px; font-size:14px; flex-wrap:wrap; }
+.assign-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:14px; flex-wrap:wrap; }
 .assign-row.pickable { cursor:pointer; transition:background-color .1s; }
-.assign-row.pickable:hover { background:#f7f1fa; }
+.assign-row.pickable:hover { background:#f3e9fa; } /* hover 对齐替换候选卡（rpl-cand）观感 */
 .assign-row.blocked { color:#9b91a7; }
 .assign-name { font-weight:500; display:inline-flex; align-items:center; gap:5px; color:#2a2430; }
 .assign-row.blocked .assign-name { color:#9b91a7; }
 .assign-tag { font-size:11px; color:#5a1d78; background:#efe3f6; border-radius:8px; padding:0 5px; }
 .assign-info { margin-left:auto; font-size:12px; color:#9b91a7; }
+.assign-score { font-size:11px; color:#8a8099; background:#f1edf5; border-radius:999px; padding:1px 8px; flex-shrink:0; } /* 分徽章（学替换候选卡） */
+.assign-score.top { color:#5a1d78; background:#efe3f6; font-weight:700; } /* 最高推荐分紫高亮（同替换 Top1） */
 .assign-why { font-size:12px; color:#dc2626; }
 .assign-reco { flex:1 0 100%; font-size:12px; color:#6a6178; line-height:1.5; margin-top:2px; } /* 可添加行「优选理由」副行（同替换弹窗人话规则） */
 .assign-add { font-size:12px; color:#5a1d78; background:#efe3f6; border-radius:999px; padding:2px 10px;
@@ -292,6 +294,7 @@ const css = `
 .modal-box { background:#fff; border-radius:10px; max-width:720px; width:92%; max-height:85vh;
   display:flex; flex-direction:column; box-shadow:0 2px 4px rgba(90,29,120,.06), 0 16px 40px rgba(60,12,74,.10); animation:modalIn .18s ease; }
 .box-confirm { max-width:400px; }
+.box-confirm-wide { max-width:600px; } /* 确认弹窗宽款：批量删除预览等需更宽排版 */
 .modal-box:focus { outline:none; } /* openModal 焦点落容器（tabindex=-1），不画默认焦点环 */
 .modal-header { display:flex; align-items:center; gap:12px; padding:12px 14px 12px 18px; font-weight:600; border-bottom:1px solid #efe9f4; }
 .modal-title { flex:1; min-width:0; }
@@ -692,6 +695,21 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .smart-empty { border:1px dashed #e0d2ef; border-radius:8px; padding:18px 12px; text-align:center; font-size:12px; color:#9b91a7; margin-bottom:8px; }
 .smart-reason { font-size:12px; color:#d97706; margin:-2px 0 8px; }
 .smart-hint { font-size:11px; color:#9b91a7; line-height:1.5; }
+
+/* ===== 排班删除改造：批量删除多选态 ===== */
+.cal-batch-bar { display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:#fdf0ef; border:1px solid #fecaca; border-radius:8px;
+  padding:7px 10px; margin:-4px 0 10px; font-size:12px; color:#7f1d1d; }
+.cal-batch-tip { display:flex; align-items:center; gap:2px; }
+.cal-batch-tip b { color:#dc2626; font-size:13px; }
+.cal-batch-right { display:flex; gap:8px; }
+.sch-card.selectable { position:relative; cursor:pointer; }
+.sch-card.selectable:hover { box-shadow:0 2px 6px rgba(220,38,38,.18); outline:1px solid #fca5a5; }
+.sch-card.selectable.selected { outline:2px solid #dc2626; outline-offset:-2px; background:#fff7f7; box-shadow:none; transform:none; }
+.sch-sel-tick { position:absolute; top:3px; right:3px; width:16px; height:16px; border-radius:50%;
+  border:1px solid #f9a8a8; background:#fff; color:transparent; font-size:10px; line-height:14px;
+  text-align:center; pointer-events:none; }
+.sch-card.selectable.selected .sch-sel-tick { background:#dc2626; border-color:#dc2626; color:#fff; }
 `;
 
 export function injectGlobalStyles() {

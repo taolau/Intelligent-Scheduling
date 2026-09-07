@@ -223,7 +223,7 @@ test('SLOT_LABELS 预置四时段标签', () => {
 test('DEFAULT_SETTINGS 默认值', () => {
   assert.deepEqual(DEFAULT_SETTINGS, {
     dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
-    preferredBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
+    preferredBonus: 15, tagBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
   });
 });
@@ -231,4 +231,14 @@ test('DEFAULT_SETTINGS 默认值', () => {
 test('createSchedule 默认空人员', () => {
   const sch = createSchedule({ date: '2026-08-24', projectId: 'P1', slotLabel: '上午' });
   assert.deepEqual(sch.staffIds, []);
+});
+
+test('createProject 默认 bonusTags 为空数组', () => {
+  const p = createProject({ name: 'X' });
+  assert.deepEqual(p.bonusTags, []);
+});
+
+test('createProject 保留传入 bonusTags', () => {
+  const p = createProject({ name: 'X', bonusTags: ['组长'] });
+  assert.deepEqual(p.bonusTags, ['组长']);
 });

@@ -12,6 +12,7 @@ const PROJECT_BASE_COLS = [
   '时间段开始(HH:mm;选填)',
   '时间段结束(HH:mm;选填)',
   '任务说明(选填)',
+  '加分标签(选填;分号隔开,可多个)',
   '启用(选填;1=启用,0=禁用,默认1)',
 ];
 const STAFF_BASE_COLS = [
@@ -28,7 +29,7 @@ const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
 const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
-const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '1'];
+const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '组长', '1'];
 const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '组长;值班'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
@@ -119,6 +120,7 @@ export async function exportProjects() {
     (p.slots ?? []).map(s => s.label).join(';'),
     p.timeRange?.start ?? '', p.timeRange?.end ?? '',
     p.description ?? '',
+    (p.bonusTags ?? []).join(';'),
     p.active === false ? 0 : 1,
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -178,10 +180,11 @@ export async function importProjects(file) {
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data);
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false }).map(normalizeKeys(PROJECT_KEY_ALIAS));
-    const { projects } = getCache();
+    const { projects, staffs } = getCache();
+    const tagPool = new Set(staffs.flatMap(s => s.tags ?? []));
     const byName = new Map(projects.map(p => [p.name.trim(), p]));
     const byId = new Map(projects.map(p => [p.id, p]));
-    let added = 0, updated = 0, skipped = 0;
+    let added = 0, updated = 0, skipped = 0, droppedTags = 0;
     for (const r of rows) {
       if (String(r['名称(必填)'] ?? '').startsWith('【示例】')) continue;
       const name = String(r['名称(必填)'] ?? '').trim();
@@ -194,6 +197,11 @@ export async function importProjects(file) {
         slots: parseSlots(r['时段(必填;自主安排/早/中/晚,分号隔开)']),
         timeRange: parseTimeRange(r['时间段开始(HH:mm;选填)'], r['时间段结束(HH:mm;选填)']),
         description: String(r['任务说明(选填)'] ?? '').trim(),
+        bonusTags: parseTags(r['加分标签(选填;分号隔开,可多个)']).filter(t => {
+          const known = tagPool.has(t);
+          if (!known) droppedTags++;
+          return known;
+        }),
         active: String(r['启用(选填;1=启用,0=禁用,默认1)'] ?? '1') !== '0',
       };
       // 同名或同 ID 覆盖（保留原 ID 保引用），否则新增；文件内多行同名后者覆盖前者
@@ -203,7 +211,7 @@ export async function importProjects(file) {
       byName.set(name, rec);
       existing ? updated++ : added++;
     }
-    return { ok: true, message: `导入 ${added + updated} 个任务${skipped ? `（跳过 ${skipped} 条空名称）` : ''}：新增 ${added}、更新 ${updated}` };
+    return { ok: true, message: `导入 ${added + updated} 个任务${skipped ? `（跳过 ${skipped} 条空名称）` : ''}：新增 ${added}、更新 ${updated}${droppedTags ? `，丢弃 ${droppedTags} 个不存在的加分标签` : ''}` };
   } catch (e) {
     return { ok: false, message: `任务导入失败：${e.message}` };
   }

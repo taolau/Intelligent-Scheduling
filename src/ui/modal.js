@@ -56,7 +56,8 @@ export function openModal({ title, body, footer, boxClass = '', closeText = '关
 }
 
 // 二次确认弹窗：左取消 + 右确认钮（默认红 danger 表破坏性；非破坏性变更调用方可传 okClass 改淡紫等），确认后执行 onConfirm
-export function confirmDialog({ title = '确认删除', message, confirmText = '确认', onConfirm, okClass = 'btn-danger' }) {
+// boxClass 默认窄款 400px；需要更宽（如批量删除预览多行）可传 'box-confirm-wide'
+export function confirmDialog({ title = '确认删除', message, confirmText = '确认', onConfirm, okClass = 'btn-danger', boxClass = 'box-confirm' }) {
   const body = document.createElement('div');
   body.className = 'modal-msg';
   body.textContent = message;
@@ -64,7 +65,7 @@ export function confirmDialog({ title = '确认删除', message, confirmText = '
   okBtn.type = 'button';
   okBtn.className = `btn ${okClass}`;
   okBtn.textContent = confirmText;
-  const modal = openModal({ title, body, footer: okBtn, boxClass: 'box-confirm', closeText: '取消' });
+  const modal = openModal({ title, body, footer: okBtn, boxClass, closeText: '取消' });
   okBtn.onclick = async () => { modal.close(); await onConfirm(); };
   return modal;
 }

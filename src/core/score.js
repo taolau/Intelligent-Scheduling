@@ -19,6 +19,17 @@ export function scoreCandidate(staff, schedule, projectById, ctx) {
     breakdown.push({ label: '擅长加分', points: preferredBonus, reason: pref.reason || '' });
   }
 
+  // 标签加分：任务加分标签 ∩ 人员标签，每命中一个标签加 tagBonus（可多个累加；纯加分，不进硬性过滤）
+  const tagBonus = ctx.settings?.tagBonus ?? DEFAULT_SETTINGS.tagBonus;
+  const bonusTags = projectById?.[schedule.projectId]?.bonusTags ?? [];
+  if (bonusTags.length) {
+    for (const t of staff.tags ?? []) {
+      if (bonusTags.includes(t)) {
+        breakdown.push({ label: '标签加分', points: tagBonus, reason: t });
+      }
+    }
+  }
+
   // 均衡加分
   let balancePoints;
   if (staff.status === 'new') {

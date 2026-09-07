@@ -34,7 +34,7 @@ export function setError(entry, msg) {
 // 标签 chip 输入（可输可选同框）：聚焦/输入时浮出「已有标签」候选面板（排除已选），点击或键盘选择即添加；
 // 输入文本无匹配时回车 = 自创该文本为新标签；同一标签自动去重不会重复出现。
 // options = 全库已有标签池（可选，为空则纯输入模式）。读取 el.value → String[]
-export function tagsInput({ initial = [], options = [], placeholder = '输入后回车添加' } = {}) {
+export function tagsInput({ initial = [], options = [], allowCreate = true, placeholder = '输入后回车添加' } = {}) {
   const box = document.createElement('div');
   box.className = 'tag-in';
   const input = document.createElement('input');
@@ -127,7 +127,7 @@ export function tagsInput({ initial = [], options = [], placeholder = '输入后
       empty.textContent = q ? '无匹配标签' : '暂无可选标签';
       panel.appendChild(empty);
     }
-    if (q && !pool.some(t => !chips.has(t) && t.toLowerCase().includes(q))) {
+    if (q && allowCreate && !pool.some(t => !chips.has(t) && t.toLowerCase().includes(q))) {
       const hint = document.createElement('div');
       hint.className = 'tag-pick-hint';
       hint.textContent = `回车创建新标签「${query}」`;
@@ -178,8 +178,9 @@ export function tagsInput({ initial = [], options = [], placeholder = '输入后
         chooseOpt(view[activeIndex]);
         return;
       }
-      if (q) { // 无匹配候选时回车 = 自创新标签
-        addText(q);
+      if (q) {
+        if (!allowCreate) return; // 只选模式：无可选候选时回车不创建新标签
+        addText(q); // 无匹配候选时回车 = 自创新标签
         input.value = '';
         query = '';
         if (open) renderPanel();

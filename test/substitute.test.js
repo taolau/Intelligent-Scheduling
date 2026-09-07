@@ -163,3 +163,32 @@ test('recommendSubstitutes: 返回全部通过者不截断（推荐前 3 / 其�
   assert.equal(result.length, 4); // 超过 3 也全量返回，供界面切成「推荐前3 + 其他」
   assert.ok(result.every((r, i) => i === 0 || result[i - 1].score >= r.score)); // 保持降序
 });
+
+// —— narrateReasons 标签命中合并 ——
+test('narrateReasons: 多个标签命中合并为一行「加分标签[…]」', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate, [
+    { label: '标签加分', points: 15, reason: '组长' },
+    { label: '标签加分', points: 15, reason: '值班' },
+    { label: '均衡加分', points: 0, reason: '旧黑话' },
+  ], { fatigueWindow: new Map([['S9', 5]]), teamAvg: 5 });
+  assert.deepEqual(lines, ['加分标签[组长;值班]']);
+});
+
+test('narrateReasons: 擅长 + 单标签命中 → 一行拼接（擅长在前、标签在中、均衡句在后）', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate, [
+    { label: '擅长加分', points: 15, reason: '体力好' },
+    { label: '标签加分', points: 15, reason: '组长' },
+    { label: '均衡加分', points: 25, reason: '旧黑话' },
+  ], { fatigueWindow: new Map([['S9', 0]]), teamAvg: 5 });
+  assert.deepEqual(lines, ['擅长搬运：体力好', '加分标签[组长]', '近 30 天排班较少，建议优先']);
+});
+
+test('narrateReasons: 标签命中 reason 为空不产生「带标签」空行', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '标签加分', points: 15, reason: '' }, { label: '均衡加分', points: 0, reason: '旧黑话' }],
+    { fatigueWindow: new Map([['S9', 5]]), teamAvg: 5 });
+  assert.deepEqual(lines, []);
+});

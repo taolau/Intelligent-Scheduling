@@ -57,18 +57,31 @@ export function cloneCtx(c) {
 export function narrateReasons(staff, schedule, projectById, breakdown, ctx) {
   const windowDays = ctx.settings?.balanceWindowDays ?? DEFAULT_SETTINGS.balanceWindowDays;
   const lines = [];
+  let hitTags = [];
+  const flushTags = () => {
+    if (hitTags.length) {
+      lines.push(`加分标签[${hitTags.join(';')}]`);
+      hitTags = [];
+    }
+  };
   for (const b of breakdown) {
     if (b.label === '擅长加分' && b.points > 0) {
       const name = projectById[schedule.projectId]?.name ?? schedule.projectId;
       lines.push(b.reason ? `擅长${name}：${b.reason}` : `擅长${name}`);
       continue;
     }
+    if (b.label === '标签加分' && b.points > 0) {
+      if (b.reason) hitTags.push(b.reason); // 多个标签先攒着，遇均衡或结束再合并成一行
+      continue;
+    }
     if (b.label !== '均衡加分' || staff.status === 'new') continue;
+    flushTags(); // 标签行置于擅长之后、均衡句之前
     const mine = ctx.fatigueWindow?.get(staff.id) ?? 0;
     const avg = ctx.teamAvg ?? 0;
     if (mine < avg) lines.push(`近 ${windowDays} 天排班较少，建议优先`);
     else if (mine > avg) lines.push(`近 ${windowDays} 天排班较多`);
   }
+  flushTags(); // new 状态无均衡加分时也会在此收尾
   return lines;
 }
 

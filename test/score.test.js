@@ -64,3 +64,70 @@ test('均衡加分读取 settings.balanceFactor（默认 5 可配）', () => {
   const bal = r.breakdown.find(b => b.label.includes('均衡'));
   assert.equal(bal.points, (4 - 2) * 3);
 });
+
+// —— 标签加分 ——
+test('标签加分：命中 1 个加分标签 +tagBonus', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  const tags = r.breakdown.filter(b => b.label === '标签加分');
+  assert.equal(tags.length, 1);
+  assert.equal(tags[0].points, 15);
+  assert.equal(tags[0].reason, '组长');
+});
+
+test('标签加分：命中多个标签累加（每命中一个加一次）', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长', '值班'] });
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['组长', '值班'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  const tags = r.breakdown.filter(b => b.label === '标签加分');
+  assert.equal(tags.length, 2);
+  assert.equal(r.score, 30);
+});
+
+test('标签加分：擅长与标签同时命中，两项都加', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '张三', preferredProjects: [{ projectId: 'PT', reason: '熟手' }], tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  const labels = r.breakdown.map(b => b.label);
+  assert.ok(labels.includes('擅长加分') && labels.includes('标签加分'));
+  assert.equal(r.score, 30);
+});
+
+test('标签加分：new 状态命中照常加分', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '新人', status: 'new', tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  const tags = r.breakdown.filter(b => b.label === '标签加分');
+  assert.equal(tags.length, 1);
+  assert.ok(r.score >= 15);
+});
+
+test('标签加分：无命中不产生该 label', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['搬运'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  assert.ok(!r.breakdown.some(b => b.label === '标签加分'));
+});
+
+test('标签加分：project 无 bonusTags 字段（旧数据/裸对象）不崩、不命中', () => {
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: { id: 'PT', name: '值班' } }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0 });
+  assert.ok(!r.breakdown.some(b => b.label === '标签加分'));
+});
+
+test('标签加分：settings 部分缺 tagBonus → 兜底默认 15（防 #28）', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0, settings: { preferredBonus: 20 } });
+  const tags = r.breakdown.filter(b => b.label === '标签加分');
+  assert.equal(tags[0].points, 15);
+});
+
+test('标签加分：读取 settings.tagBonus（默认 15 可配）', () => {
+  const P = createProject({ id: 'PT', name: '值班', bonusTags: ['组长'] });
+  const s = createStaff({ id: 'S1', name: '张三', tags: ['组长'] });
+  const r = scoreCandidate(s, { date: '2026-08-24', projectId: 'PT', slotLabel: '早' }, { PT: P }, { fatigueWindow: new Map([['S1', 0]]), teamAvg: 0, settings: { tagBonus: 25 } });
+  const tags = r.breakdown.filter(b => b.label === '标签加分');
+  assert.equal(tags[0].points, 25);
+});

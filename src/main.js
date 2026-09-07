@@ -6,7 +6,7 @@ import { renderConfig } from './views/config.js';
 import { renderAnalysis, resetAnalysisView } from './views/analysis.js';
 import { loadAll, exportJSON, importJSON } from './data/store.js';
 import { KEYS } from './data/keys.js';
-import { openModal } from './ui/modal.js';
+import { openModal, confirmDialog } from './ui/modal.js';
 import { showToast } from './ui/toast.js';
 
 const ICON = {
@@ -94,7 +94,7 @@ function initBackup() {
 
     const tip = document.createElement('div');
     tip.className = 'bk-tip';
-    tip.innerHTML = `${ICON_SHIELD}<span>定期导出备份可防止数据丢失。备份为 JSON 文件，包含<strong>人员 / 任务 / 班次</strong>全部数据。</span>`;
+    tip.innerHTML = `${ICON_SHIELD}<span>定期导出备份可防止数据丢失。备份为 JSON 文件，包含<strong>人员 / 任务 / 班次 / 系统参数</strong>全部数据。</span>`;
 
     const cards = document.createElement('div');
     cards.className = 'bk-cards';
@@ -102,7 +102,7 @@ function initBackup() {
     const exportCard = mkBackupCard(
       ICON_BACKUP, '导出备份',
       '将当前全部数据打包为一个 JSON 文件，下载保存到本地。',
-      '导出 JSON', 'btn btn-primary',
+      '导出 JSON', 'btn btn-soft',
       async () => {
         const blob = new Blob([await exportJSON()], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -128,9 +128,27 @@ function initBackup() {
         input.onchange = async () => {
           if (!input.files[0]) return;
           const text = await input.files[0].text();
-          const r = await importJSON(text);
-          showToast(r.message, r.ok ? 'success' : 'error');
-          if (r.ok) location.reload();
+          let data;
+          try { data = JSON.parse(text); }
+          catch { showToast('无法解析该文件，不是有效的备份 JSON', 'error'); return; }
+          const cnt = k => (Array.isArray(data[k]) ? data[k].length : null);
+          if (cnt('projects') == null || cnt('staffs') == null || cnt('schedules') == null) {
+            showToast('该文件缺少 人员/任务/班次 数据，不是有效备份', 'error');
+            return;
+          }
+          const hasSettings = data.settings && typeof data.settings === 'object';
+          confirmDialog({
+            title: '确认恢复',
+            message: `将从该备份覆盖当前全部数据：\n任务 ${cnt('projects')} 个 · 人员 ${cnt('staffs')} 个 · 班次 ${cnt('schedules')} 个${hasSettings ? ' · 含系统参数' : ''}。\n此操作不可撤销，请确认已导出最新备份。`,
+            confirmText: '确认恢复',
+            okClass: 'btn-soft', // 恢复非删除类破坏，确认钮用淡紫款（勿红）
+            boxClass: 'box-confirm-wide', // 恢复确认多行计数排版，宽款 600px
+            onConfirm: async () => {
+              const r = await importJSON(text);
+              showToast(r.message, r.ok ? 'success' : 'error');
+              if (r.ok) location.reload();
+            },
+          });
         };
         input.click();
       },
