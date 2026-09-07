@@ -1059,17 +1059,17 @@ const SET_GROUPS = [
     ],
   },
   {
-    title: '新建人员默认',
-    desc: '仅作用于之后新建的人员（含 Excel 导入缺省）；已有人员不受影响。',
+    title: '默认上限',
+    desc: '各上限的默认取值：新建/导入未填写时使用；已有人员已保存的上限不自动跟随，可在「人员管理」逐人调整。',
     items: [
       { key: 'defaultWeeklyFatigue', name: '周疲劳上限', min: 1,
-        hint: '新人的单周劳累积分上限（防透支）。本周劳累积分 = 本周已排班次的劳累指数之和。' },
+        hint: '单周劳累积分上限（默认）。本周劳累积分 = 本周已排班次的劳累指数之和；超过即防透支拦截。' },
       { key: 'defaultHeavyTaskCount', name: '周高强度次数上限', min: 0,
-        hint: '新人一周最多接几个劳累指数 3（高强度）班次；填 0 = 完全不安排高强度。' },
+        hint: '一周最多接几个劳累指数 3（高强度）班次（默认）；填 0 = 完全不安排高强度。' },
       { key: 'defaultMonthlyFatigue', name: '月疲劳上限', min: 1,
-        hint: '新人的单月劳累积分上限（防整月无度堆积）。本月劳累积分 = 该自然月已排班次的劳累指数之和；与周上限各自独立（周看单周、月看整月）。' },
+        hint: '单月劳累积分上限（默认）。本月劳累积分 = 该自然月已排班次的劳累指数之和；与周上限各自独立（周看单周、月看整月）。' },
       { key: 'defaultMonthlyHeavyCount', name: '月高强度次数上限', min: 0,
-        hint: '新人一个月最多接几个劳累指数 3（高强度）班次（自然月累计）；填 0 = 整月不安排高强度。与周高强度各自独立，周保单周、月保整月。' },
+        hint: '一个月最多接几个劳累指数 3（高强度）班次（默认，自然月累计）；填 0 = 整月不安排高强度。与周高强度各自独立。' },
     ],
   },
   {
@@ -1150,7 +1150,7 @@ function renderSettings(head, scroll) {
   topL.append(icoL, titleL);
   const subL = document.createElement('div');
   subL.className = 'set-pane-sub';
-  subL.textContent = '所有改动在点击「保存」后统一生效；「新建人员默认」不影响已有人员与班次。';
+  subL.textContent = '所有改动在点击「保存」后统一生效；「默认上限」只影响之后新建/导入与未单独设置者，不回溯改动已有人员已保存的上限。';
   headL.append(topL, subL);
   const bodyL = document.createElement('div');
   bodyL.className = 'set-pane-body set-groups';
