@@ -6,7 +6,7 @@ import { simulateAutoFill, accumulateDelta } from '../core/auto.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayLabel, monthKey, shiftMonth, weeksCovering, inMonth } from '../core/week.js';
 import { getCache, saveSchedule, saveSchedules, getSettings, removeSchedule } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
-import { createSchedule, SLOT_LABELS, monthlyFatigueLimitOf } from '../data/model.js';
+import { createSchedule, SLOT_LABELS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
@@ -434,7 +434,7 @@ function buildDimSummary(visible) {
     }
     const info = document.createElement('span');
     info.textContent = timeScale === 'month'
-      ? `本月 ${visible.length} 个班次 · 疲劳 ${fatigue}/${monthlyFatigueLimitOf(st, ctx.settings)} · 高强度 ${heavy}`
+      ? `本月 ${visible.length} 个班次 · 疲劳 ${fatigue}/${monthlyFatigueLimitOf(st, ctx.settings)} · 高强度 ${heavy}/${monthlyHeavyLimitOf(st, ctx.settings)}`
       : `本周 ${visible.length} 个班次 · 疲劳 ${fatigue}/${st?.maxWeeklyFatigue ?? 0} · 高强度 ${heavy}/${st?.maxHeavyTaskCount ?? 0}`;
     line.appendChild(info);
   }
@@ -970,9 +970,11 @@ function staffChipClass(staff, date) {
     // 月粒度红黄换绑到月上限（周上限滚动语义仅周粒度成立）
     const mkey = monthKey(date);
     const mf = ctx.fatigueByMonth.get(`${staff.id}|${mkey}`) ?? 0;
+    const mh = ctx.heavyByMonth?.get(`${staff.id}|${mkey}`) ?? 0;
     const limit = monthlyFatigueLimitOf(staff, ctx.settings);
-    if (mf > limit) return 'staff-chip over';
-    if (mf >= limit * 0.8) return 'staff-chip warn';
+    const hlim = monthlyHeavyLimitOf(staff, ctx.settings);
+    if (mf > limit || (hlim > 0 && mh > hlim)) return 'staff-chip over';
+    if (mf >= limit * 0.8 || (hlim > 0 && mh >= hlim * 0.8)) return 'staff-chip warn';
     return 'staff-chip';
   }
   const weekKey = `${staff.id}|${getWeekStart(date)}`; // 该班次所在自然周
@@ -990,8 +992,9 @@ function staffChipTitle(staff, date) {
   const daily = date ? (ctx.dailyCounts?.get(`${staff.id}|${date}`) ?? 0) : 0;
   if (timeScale === 'month') {
     const mf = ctx.fatigueByMonth.get(`${staff.id}|${monthKey(date)}`) ?? 0;
+    const mh = ctx.heavyByMonth?.get(`${staff.id}|${monthKey(date)}`) ?? 0;
     const wk = ctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(date)}`) ?? 0;
-    return `本月累计 ${mf}/${monthlyFatigueLimitOf(staff, ctx.settings)} · 本周 ${wk}/${staff.maxWeeklyFatigue} · 当日 ${daily} 个任务`;
+    return `本月累计 ${mf}/${monthlyFatigueLimitOf(staff, ctx.settings)} · 本月高强度 ${mh}/${monthlyHeavyLimitOf(staff, ctx.settings)} · 本周 ${wk}/${staff.maxWeeklyFatigue} · 当日 ${daily} 个任务`;
   }
   const weekKey = `${staff.id}|${getWeekStart(date)}`;
   const fatigue = ctx.fatigueByWeek.get(weekKey) ?? 0;
