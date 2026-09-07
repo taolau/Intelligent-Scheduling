@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { createProject, createStaff, isValidTimeRange, reconcileStaff, parseTags, SLOT_LABELS } from '../data/model.js';
+import { createProject, createStaff, isValidTimeRange, reconcileStaff, parseTags, SLOT_LABELS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { getCache, saveProject, saveStaff, getSettings } from '../data/store.js';
 
 // 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）无 ID 列；导出（存档/迁移）保留 ID 保证引用关系，导入两种均兼容。
@@ -23,6 +23,8 @@ const STAFF_BASE_COLS = [
   '不合适项目(选填;项目(原因),分号隔开)',
   '周疲劳上限(选填)',
   '高强度次数上限(选填)',
+  '月疲劳上限(选填)',
+  '月高强度次数上限(选填)',
   '标签(选填;分号隔开,可多个)',
 ];
 const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
@@ -30,7 +32,7 @@ const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
 const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '组长', '1'];
-const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '组长;值班'];
+const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '40', '8', '组长;值班'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
 const STATUS_REV = { new: '新入', active: '活跃', rest: '休假', left: '已退出' };
@@ -138,6 +140,7 @@ export async function exportStaffs() {
     (s.preferredProjects ?? []).map(p => p.reason ? `${p.projectId}(${p.reason})` : p.projectId).join(';'),
     (s.bannedProjects ?? []).map(b => b.reason ? `${b.projectId}(${b.reason})` : b.projectId).join(';'),
     s.maxWeeklyFatigue, s.maxHeavyTaskCount,
+    monthlyFatigueLimitOf(s, getSettings()), monthlyHeavyLimitOf(s, getSettings()),
     (s.tags ?? []).join(';'),
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -236,6 +239,8 @@ export async function importStaffs(file) {
       // 上限列留空 → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
       const weeklyN = Number(r['周疲劳上限(选填)']);
       const heavyN = Number(r['高强度次数上限(选填)']);
+      const monthlyFatigueN = Number(r['月疲劳上限(选填)']);
+      const monthlyHeavyN = Number(r['月高强度次数上限(选填)']);
       const fields = {
         name,
         status,
@@ -245,6 +250,8 @@ export async function importStaffs(file) {
         bannedProjects: parsePref(r['不合适项目(选填;项目(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
         maxWeeklyFatigue: Number.isFinite(weeklyN) ? weeklyN : settings.defaultWeeklyFatigue,
         maxHeavyTaskCount: Number.isFinite(heavyN) ? heavyN : settings.defaultHeavyTaskCount,
+        maxMonthlyFatigue: Number.isFinite(monthlyFatigueN) ? monthlyFatigueN : settings.defaultMonthlyFatigue,
+        maxMonthlyHeavyCount: Number.isFinite(monthlyHeavyN) ? monthlyHeavyN : settings.defaultMonthlyHeavyCount,
         tags: parseTags(r['标签(选填;分号隔开,可多个)']),
       };
       // 三列表关系收敛：可胜任剔除与不合适重叠项、擅长自动并入可胜任、与不合适重叠的擅长剔除（不合适优先）
