@@ -529,6 +529,10 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cfg-row { display:flex; align-items:flex-start; gap:8px; }
 .cfg-row .k { flex-shrink:0; min-width:5.5em; color:#6a6178; }
 .cfg-row .v { display:flex; flex-wrap:wrap; gap:4px; min-width:0; align-items:center; }
+.cfg-row.cfg-duo { flex-wrap:wrap; row-gap:2px; } /* 人员卡两上限并排一行（周+月） */
+.cfg-row.cfg-duo .duo-pair { flex:1 1 0; display:flex; align-items:center; gap:6px; min-width:0; } /* 每半平分行宽 */
+.cfg-row.cfg-duo .duo-pair .k { flex-shrink:0; color:#6a6178; }
+.cfg-row.cfg-duo .duo-pair .v { flex:0 0 auto; }
 /* 任务说明文本：明确 line-height 供 JS 行数测量，长文本强制换行 */
 .cfg-row .v-text { display:inline-block; line-height:1.5; word-break:break-all; }
 textarea.input { resize:vertical; min-height:64px; line-height:1.5; }

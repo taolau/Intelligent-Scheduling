@@ -335,10 +335,8 @@ async function renderStaffs(head, scroll) {
         <div class="cfg-row"><span class="k">擅长</span><span class="v">${pref}</span></div>
         <div class="cfg-row"><span class="k">不合适</span><span class="v">${banned}</span></div>
         <div class="cfg-row"><span class="k">标签</span><span class="v">${tagsHtml}</span></div>
-        <div class="cfg-row"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></div>
-        <div class="cfg-row"><span class="k">月疲劳上限</span><span class="v">${monthlyFatigueLimitOf(s, getSettings())}</span></div>
-        <div class="cfg-row"><span class="k">高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></div>
-        <div class="cfg-row"><span class="k">月高强度上限</span><span class="v">${monthlyHeavyLimitOf(s, getSettings())}</span></div>
+        <div class="cfg-row cfg-duo"><span class="duo-pair"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></span><span class="duo-pair"><span class="k">月疲劳上限</span><span class="v">${monthlyFatigueLimitOf(s, getSettings())}</span></span></div>
+        <div class="cfg-row cfg-duo"><span class="duo-pair"><span class="k">周高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></span><span class="duo-pair"><span class="k">月高强度上限</span><span class="v">${monthlyHeavyLimitOf(s, getSettings())}</span></span></div>
       </div>
       <div class="cfg-card-ops">
         <label class="switch-wrap">
@@ -499,7 +497,7 @@ async function editStaffDialog(staff) {
   heavyInput.type = 'number';
   heavyInput.min = 0;
   heavyInput.value = target.maxHeavyTaskCount;
-  const heavyF = field({ label: '高强度次数上限', control: heavyInput });
+  const heavyF = field({ label: '周高强度上限', control: heavyInput });
 
   const monthFatigueInput = document.createElement('input');
   monthFatigueInput.className = 'input';
@@ -1066,11 +1064,11 @@ const SET_GROUPS = [
     items: [
       { key: 'defaultWeeklyFatigue', name: '周疲劳上限', min: 1,
         hint: '新人的单周劳累积分上限（防透支）。本周劳累积分 = 本周已排班次的劳累指数之和。' },
-      { key: 'defaultHeavyTaskCount', name: '高强度次数上限', min: 0,
+      { key: 'defaultHeavyTaskCount', name: '周高强度次数上限', min: 0,
         hint: '新人一周最多接几个劳累指数 3（高强度）班次；填 0 = 完全不安排高强度。' },
       { key: 'defaultMonthlyFatigue', name: '月疲劳上限', min: 1,
         hint: '新人的单月劳累积分上限（防整月无度堆积）。本月劳累积分 = 该自然月已排班次的劳累指数之和；与周上限各自独立（周看单周、月看整月）。' },
-      { key: 'defaultMonthlyHeavyCount', name: '月高强度上限', min: 0,
+      { key: 'defaultMonthlyHeavyCount', name: '月高强度次数上限', min: 0,
         hint: '新人一个月最多接几个劳累指数 3（高强度）班次（自然月累计）；填 0 = 整月不安排高强度。与周高强度各自独立，周保单周、月保整月。' },
     ],
   },
@@ -1116,7 +1114,7 @@ const RULE_SECS = [
       '劳累指数 = 任务自带的辛苦分：1 轻松 / 2 中等 / 3 高强度',
       '本周劳累积分 = 该班次所在自然周（周一 ~ 周日，滚动窗口）已排班次的劳累指数之和，超过个人「周疲劳上限」即超限——上周干得多不影响本周判定',
       '月疲劳积分 = 该班次所在自然月（YYYY-MM，非滚动窗口）已排班次的劳累指数之和，超过个人「月疲劳上限」即超限——月初/月末相邻两天分属两月，会有月底卡死、月初重置的边界表现',
-      '高强度次数 = 该班次所在周内排过的 3 分班次数，受个人「高强度次数上限」约束（同滚动周）；月高强度次数 = 该自然月内排过的 3 分班次数，受个人「月高强度次数上限」约束（同自然月）',
+      '高强度次数 = 该班次所在周内排过的 3 分班次数，受个人「周高强度次数上限」约束（同滚动周）；月高强度次数 = 该自然月内排过的 3 分班次数，受个人「月高强度次数上限」约束（同自然月）',
       '连任按"期"计：同一任务在有排班的自然周里连续排到同一人的期数；任务某周没排（空窗）不算中断，换人接手才清零',
       '「周/月上限」是透支保护（周滚动、月固定自然月）；「公平参考窗口」是长期轮换标尺；「连任上限」是同任务轮换纪律——三者分工互不干扰',
     ],
