@@ -96,6 +96,8 @@ const css = `
 .asg-limited .assign-row .assign-name { flex:none; }
 .asg-subhead.collap { cursor:pointer; user-select:none; }
 .asg-subhead.collap:hover { color:#5a1d78; }
+.asg-exempt-note { font-size:12px; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:6px;
+  padding:6px 10px; margin-bottom:4px; } /* 连任豁免破例提示条（无其他可排人选） */
 /* 点行即加：保留「已选」高亮（不整窗重绘清除）；再点一次 = 取消选中 → pointer + hover 加深 */
 .assign-row.pickable.picked { background:#efe3f6; cursor:pointer; }
 .assign-row.pickable.picked:hover { background:#e6d8f1; }

@@ -1,12 +1,12 @@
 import { expandWeeks, previewExpand } from '../core/expand.js';
 import { filterCandidate } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
-import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx } from '../core/substitute.js';
+import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx, splitEligible } from '../core/substitute.js';
 import { simulateAutoFill, accumulateDelta } from '../core/auto.js';
 import { getWeekStart, getWeekDates, getWeekLabel, todayStr, toDateStr, weekdayLabel, monthKey, shiftMonth, weeksCovering, inMonth } from '../core/week.js';
 import { getCache, saveSchedule, saveSchedules, getSettings, removeSchedule } from '../data/store.js';
 import { KEYS } from '../data/keys.js';
-import { createSchedule, SLOT_LABELS } from '../data/model.js';
+import { createSchedule, SLOT_LABELS, monthlyFatigueLimitOf } from '../data/model.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
@@ -434,7 +434,7 @@ function buildDimSummary(visible) {
     }
     const info = document.createElement('span');
     info.textContent = timeScale === 'month'
-      ? `本月 ${visible.length} 个班次 · 疲劳 ${fatigue} · 高强度 ${heavy}`
+      ? `本月 ${visible.length} 个班次 · 疲劳 ${fatigue}/${monthlyFatigueLimitOf(st, ctx.settings)} · 高强度 ${heavy}`
       : `本周 ${visible.length} 个班次 · 疲劳 ${fatigue}/${st?.maxWeeklyFatigue ?? 0} · 高强度 ${heavy}/${st?.maxHeavyTaskCount ?? 0}`;
     line.appendChild(info);
   }
@@ -816,11 +816,16 @@ function scheduleDialog(sch) {
       const pickedRows = new Map(); // sid -> 本次点选已加入的行（保留高亮，不整窗重绘）
       const availEntries = []; // 可添加候选 {staff,row,info}，按推荐分排序
       let limitedOpen = false;
+      // 连任豁免：仅当无可其他可排人选时，仅因连任被拦者上浮为可点选（保运转不空班）
+      const { base, tenured } = splitEligible(data.staffs, draft, projectById, dctx, draft.staffIds);
+      const tenureExempt = base.length === 0 && tenured.length > 0;
+      const exemptSet = new Set(tenureExempt ? tenured.map(s => s.id) : []);
       for (const s of data.staffs) {
         if (draft.staffIds.includes(s.id)) continue; // 已在班者进上方 chips，不重复作候选
         const res = filterCandidate(s, draft, projectById, dctx);
+        const isAvail = res.ok || exemptSet.has(s.id);
         const row = document.createElement('div');
-        row.className = 'assign-row' + (res.ok ? ' pickable' : ' blocked');
+        row.className = 'assign-row' + (isAvail ? ' pickable' : ' blocked');
         row.dataset.name = s.name;
         row.dataset.tags = JSON.stringify(s.tags ?? []);
         const name = document.createElement('span');
@@ -833,7 +838,7 @@ function scheduleDialog(sch) {
           name.appendChild(tag);
         }
         row.appendChild(name);
-        if (res.ok) {
+        if (isAvail) {
           const info = document.createElement('span');
           info.className = 'assign-info';
           info.textContent = `周疲劳 ${dctx.fatigueByWeek.get(`${s.id}|${getWeekStart(draft.date)}`) ?? 0}/${s.maxWeeklyFatigue}`;
@@ -846,6 +851,7 @@ function scheduleDialog(sch) {
           row.append(name, scoreEl, info);
           // 优选理由副行（同替换弹窗人话规则）：擅长原因 / 窗口偏少建议优先等，选人依据更清晰
           const reco = narrateReasons(s, draft, projectById, breakdown, dctx);
+          if (tenureExempt && res.tenureOnly) reco.unshift('（仅因无其他可排人选，破例连任）');
           if (reco.length) {
             const re = document.createElement('span');
             re.className = 'assign-reco';
@@ -865,6 +871,12 @@ function scheduleDialog(sch) {
       }
       // 可添加按推荐分（擅长 + 窗口均衡）降序；stable 保持同分原序
       availEntries.sort((a, b) => (Number(b.row.dataset.score) || 0) - (Number(a.row.dataset.score) || 0));
+      if (tenureExempt) {
+        const note = document.createElement('div');
+        note.className = 'asg-exempt-note';
+        note.textContent = '当前无可其他可排人选，以下连任人员破例放行';
+        listAvail.appendChild(note);
+      }
       for (const it of availEntries) listAvail.appendChild(it.row);
       const fullNow = () => draft.staffIds.length >= capacity;
       const syncNoSlot = () => { // 满员后其余未选行置灰禁点
@@ -954,7 +966,15 @@ function scheduleDialog(sch) {
 
 function staffChipClass(staff, date) {
   if (!staff) return 'staff-chip';
-  if (timeScale === 'month') return 'staff-chip'; // 周上限红黄语义仅周粒度成立（月粒度不判超限）
+  if (timeScale === 'month') {
+    // 月粒度红黄换绑到月上限（周上限滚动语义仅周粒度成立）
+    const mkey = monthKey(date);
+    const mf = ctx.fatigueByMonth.get(`${staff.id}|${mkey}`) ?? 0;
+    const limit = monthlyFatigueLimitOf(staff, ctx.settings);
+    if (mf > limit) return 'staff-chip over';
+    if (mf >= limit * 0.8) return 'staff-chip warn';
+    return 'staff-chip';
+  }
   const weekKey = `${staff.id}|${getWeekStart(date)}`; // 该班次所在自然周
   const fatigue = ctx.fatigueByWeek.get(weekKey) ?? 0;
   const heavy = ctx.heavyByWeek.get(weekKey) ?? 0;
@@ -971,7 +991,7 @@ function staffChipTitle(staff, date) {
   if (timeScale === 'month') {
     const mf = ctx.fatigueByMonth.get(`${staff.id}|${monthKey(date)}`) ?? 0;
     const wk = ctx.fatigueByWeek.get(`${staff.id}|${getWeekStart(date)}`) ?? 0;
-    return `本月累计 ${mf} · 本周 ${wk}/${staff.maxWeeklyFatigue} · 当日 ${daily} 个任务`;
+    return `本月累计 ${mf}/${monthlyFatigueLimitOf(staff, ctx.settings)} · 本周 ${wk}/${staff.maxWeeklyFatigue} · 当日 ${daily} 个任务`;
   }
   const weekKey = `${staff.id}|${getWeekStart(date)}`;
   const fatigue = ctx.fatigueByWeek.get(weekKey) ?? 0;
