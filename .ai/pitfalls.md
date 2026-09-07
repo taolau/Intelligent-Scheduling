@@ -300,3 +300,11 @@
   - **根因 B**：`display:block` 使面板**瞬间成为 flex 项占位**（仍参与布局），同一同步 tick 内 `getBoundingClientRect()` 量输入框时强制重排——量到的是「面板占位挤动后」的坐标；随后面板才 `position:fixed` 脱离文档流，输入框归位，面板却停在被挤动坐标 → 错位 = 面板占位宽度
   - **解决 B**：浮层面板打开时**先置 `position:fixed` 脱离文档流、再 `display:block`**，之后测坐标才干净；凡「测量目标 rect 后 fixed 定位自身」的浮层，自身绝不能在被测容器内先参与布局
   - **启示**：自建带浮层/回填的动态 DOM 组件，验收清单 = ①构造顺序（参考节点挂载先于内容回填）②浮层打开顺序（先脱流再显示再测量）；此类错误全走「入口静默 / 视觉偏移」，浏览器不报错、只在特定数据/交互路径触发
+
+## 37. theme.js 全局样式靠启动一次性注入：dev 改样式后 HMR 不即时注入新规则，需整页刷新 + getComputedStyle 实测
+
+- **现象**：给 `.cfg-row.cfg-duo .duo-pair { flex:1 1 0 }` 加 flex-grow，浏览器里两列半天不拉伸（仍是内容宽），DOM 结构、选择器、层叠都检查不出错；误以为 CSS 没写对
+- **场景**：`theme.js` 里 `injectGlobalStyles()` 在应用启动时把整段 CSS 写进 `<style id=app-theme>`（spec 存储决策「样式随 JS 内联进单文件」）。dev 下编辑 theme.js 触发 Vite HMR 只热替模块，**不会重新执行注入**——新加的规则根本不进样式表
+- **根因**：HMR 更新的是 JS 模块，而 CSS 已在启动时以字符串形态写进 DOM `<style>`；模块再更新不会重跑 inject → 新增选择器缺位，computed 样式维持旧值。代码/选择器无错，纯粹是"规则没被浏览器加载"
+- **解决**：改 theme.js 后**整页刷新**再验；排查"样式没生效"先确认规则真在：`[...document.querySelectorAll('style')].some(s => s.textContent.includes('选择器'))`，或用 `getComputedStyle(el).flex` 看实际计算值——规则不在就刷页，别先怀疑 CSS 语法/特异性（与 #36「声明数值勿信代码」互补）
+- **启示**：凡是"样式在启动时一次性注入 DOM"的方案（theme.js 单点注入内联），dev 改样式的验证 = 整页刷新 + 计算样式实测；「改了没效果」先分清是规则没加载还是被覆盖，再动选择器
