@@ -5,17 +5,12 @@
 
 ## 📍 当前状态
 - **09-05 已提交**（2030025 批量铺排）——已清账
-- **09-07 批次 1 + 2 + 3（未提交，实现完成待提交）**——一次 /commit 收口，语义定稿均已在 `.ai/spec.md`（智能排班预览确认 §4.4/5.2、人员标签 §5.1、分配弹窗候选两区化 §5.2、排班删除改造 §5.2）：
-  - **批次 1 智能排班**：core `simulateAutoFill` 同通道预览 + 缺口单列 + 确认批量落盘
-  - **批次 2 人员标签/粒度/弹窗**：Staff.tags 自由文本多标签 + tagsInput 同框可输可选、人员/排班过滤、Excel 标签列；周粒度按钮「本周」、周↔月切回默认锚；编辑弹窗姓名+状态同行；分配弹窗候选两区化 + 名称/标签过滤（`.sel.asg-tag-sel` 双类修复，pitfalls #36）
-  - **批次 3 排班删除改造**：分配弹窗改「暂存 + 确认保存」（净差落库、关闭即弃、无改动禁用、删除入口移除）；工具栏「批量删除」多选态（总览/项目可用、可见卡勾选、二次确认、三轨回退、重渲染自动退出、空视图 toast）；确认框新增宽款 `box-confirm-wide`；分配候选行观感学替换候选卡（分徽章最高可加分紫高亮 + 周疲劳小字右置，仍点行选）。设计/实施文档落 `docs/superpowers/`（specs + plans 各 1 份）
-  - 验证：117 单测绿 + Playwright 实测（暂存弃/存、批量删/计数回退/自动退出/只读隐藏/空态）全过，dev 数据已还原、dev server 已停
-- **09-07 系统参数纳入备份（未提交）**——settings 归业务数据单例：exportJSON 输出 `{三表, settings}`（取 getSettings 生效值）、importJSON settings 存在则 saveSettings 覆盖写回（旧备份无则保留本机当前）；resetAll 一并清 settings（回全新默认）。UI 状态仍本机偏好不进备份。涉及 store.js/keys.js/main.js 文案/store.test.js +3 测试 + storage.md/spec §5.5。语义定稿见 spec §5.5。
-- **09-07 任务加分标签（未提交，实现完成待提交）**——随上面批次一次 /commit 收口（改动文件不重合：本次 core/data/ui/excel/config + 3 测试 + 2 文档）。语义定稿均已在 spec（Project.bonusTags §3.1、标签加分 §4.3、任务编辑/卡片/系统设置 §5.1、Excel 列 §5.5、tagBonus §6）：
-  - Project.bonusTags（引用人员标签池文本）+ 系统设置 tagBonus 默认 15；score 每命中一标签累加 tagBonus；narrateReasons 理由行 `加分标签[组长]`（多标签 `;` 并）
-  - tagsInput 加 `allowCreate:false` 只选不建（任务编辑配加分标签用；人员编辑默认仍可自创）
-  - Excel 任务模板/导出/导入加「加分标签」列，导入只留池内标签丢其余；任务卡片行在「时间段」下、任务编辑弹窗「名称+启用状态」field-pair 同行
-  - 验证：130 单测全绿（原 117+13）+ Playwright 端到端（张三带「组长」命中 → 分配弹窗副行 `加分标签[组长]` +15 分置顶、只选不建回车不自创、卡片行/系统设置行），测试数据已还原（modalCount=0）
+- **09-07 前批已提交并清账**（8899d69 批次 1-3 智能排班/标签/删除多选；e5e236d 任务加分标签 + 系统参数纳入备份 + 批 3 文档补交）
+- **09-07 月上限 + 连任轮换 + 月高强（本批次已实现，逐步提交）**——语义定稿见 spec §3.2（两月字段）、§4.2 新条目 10-12（月疲劳/月高强/连任 + 豁免）、§5.2（月 chip 红黄口径）、§6（defaultMonthlyFatigue/defaultMonthlyHeavyCount/tenureLimit）；design/plan 落 docs/superpowers/2026-09-07-month-limit-tenure*
+  - 月疲劳 `maxMonthlyFatigue` 默认 40 + 月高强 `maxMonthlyHeavyCount` 默认 8（0=禁整月高强），均每人字段、自然月固定窗口硬拦三态文案
+  - 连任 `tenureLimit` 默认 3（0=关闭）：同任务整体按有发生周计期，空窗不中断/他人接手中断/未来计入，拦第 N+1 期；豁免 = 无他人可排时放行（`splitEligible` 分池，auto/替换/分配弹窗一致）
+  - ctx 新增 `heavyByMonth`（月高强计数轨）+ `projectWeeks`/`tenure`（连任表），buildContext 聚合 / cloneCtx 深拷贝 / accumulateDelta ±
+  - 验证：167 单测全绿；UI（月 chip 红黄/hover/摘要、设置第四组「排班轮换」、人员卡/编辑弹窗、Excel 列）待 Playwright 冒烟（本批次尚未实测）
 - **dist**：⏳ 旧构建（09-03），需 `node build.js`（Tao 要求时才构建）
 
 ## 🧠 核心决策
@@ -28,8 +23,10 @@
 - 分配候选信息位（Tao 拍板）：分徽章 + 保留周疲劳小字（学替换候选卡观感但保持点行选交互）。
 - 09-07 任务加分标签（Tao 拍板）：① 触发 = 每命中一个加分标签 +一次分（多标签按交集累加，非「命中任一即一次」）；② 分值 = **独立系统设置 `tagBonus` 默认 15**，不复用擅长 `preferredBonus`（两权重可单调）；③ 来源 = 任务编辑弹窗**只选已有人员标签池**（tagsInput `allowCreate:false`，不自创——选了没人有的标签无意义）；④ 加任务 Excel「加分标签」列（分号分隔），导入只留池内文本丢其余；⑤ 可见 = 任务配置卡片行（放「时间段」下，空显 —）+ 分配/替换候选推荐理由副行（`加分标签[组长]`，Tao 后来把「带标签「组长」，适合本项目」整句换掉——理由更紧凑），**不放**任务视图/说明图；⑥ 纯加分不碰硬性过滤，`new` 命中照加（仅均衡恒 0）。
 - 消费端自动生效（无需逐入口改）：分配弹窗/替换弹窗/智能排班均走 `scoreCandidate`（score.js）+ `narrateReasons`（substitute.js），加分标签进打分明细即全链路贯通。
+- 09-07 月维度上限（Tao 拍板）：月疲劳 + 月高强度并行、每人字段 + 设置默认，硬约束自然月（非滚动），月粒度三合一（filter 硬拦 + 月 chip 红黄 + hover/摘要带上限）；周上限滚动语义不动，月固定自然月故接受月底/月初边界突刺。
+- 09-07 连任轮换（Tao 拍板）：同任务整体合并计数按"有发生自然周"，空窗不中断、他人接手清零、未来已排定计入段长；全局 `tenureLimit` 默认 3、0 = 关闭；**硬拦 + 无他人可排豁免**（偏好性轮换纪律，无人手时空班更糟，故豁免保运转）；拦第 N+1 期（允许连任 N 期）。
 
 ## ⚠️ 待办与注意
-- **待办**：Tao 自查 09-07 三批次观感（批次 3：批量条/勾选态描边/确认框宽款/分配候选分徽章/分配弹窗「确认保存」禁用）+ 加分标签观感（任务编辑弹窗名称+启用同行、任务卡片加分标签行在「时间段」下、分配弹窗候选副行 `加分标签[组长]`）→ 自查通过后 批次 1+2+3 + 加分标签 一次 `/commit`（含两份 design + plans 文档、spec、memory、project_map）。
+- **待办**：本批次（月上限/连任/月高强）Playwright 冒烟（分配弹窗豁免上浮、替换/自动豁免、月 chip 红黄、批量删除 tenure 回退）→ 通过后批次提交（含 month-limit design/plan 文档、spec/memory/project_map）；`docs/score-rules.md` 人话手册按 spec §4.2 补月上限/连任段落（config RULE 已同步，score-rules 待补）。
 - **注意**：Playwright 还原测试数据时勿用 evaluate 直点背景卡片/按钮——会**绕过 modal 遮罩**开出弹窗栈，后续「保存/确认」按钮选择器可能命中底层弹窗 → 误操作/还原失败；还原后核对卡片行 + 弹窗数（modalCount=0）再收尾。加分标签冒烟还原点：人员 tags 清空、任务 bonusTags 清空、无测试班次残留。
 - **注意**：批量多选态会覆盖卡片内小目标（人名 chip / ⚡ / 拖拽）——只拦 card.onclick 不够，相关 handler 都要在该态跳过；外部重渲染自动退出靠 `renderCalendar(container, opts)` 顶部 `if (batchDeleteActive && !opts.keepBatch) exitBatchState()` 兜底。
