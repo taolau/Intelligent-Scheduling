@@ -6,11 +6,7 @@
 ## 📍 当前状态
 - **09-05 已提交**（2030025 批量铺排）——已清账
 - **09-07 前批已提交并清账**（8899d69 批次 1-3 智能排班/标签/删除多选；e5e236d 任务加分标签 + 系统参数纳入备份 + 批 3 文档补交）
-- **09-07 月上限 + 连任轮换 + 月高强（本批次已实现，逐步提交）**——语义定稿见 spec §3.2（两月字段）、§4.2 新条目 10-12（月疲劳/月高强/连任 + 豁免）、§5.2（月 chip 红黄口径）、§6（defaultMonthlyFatigue/defaultMonthlyHeavyCount/tenureLimit）；design/plan 落 docs/superpowers/2026-09-07-month-limit-tenure*
-  - 月疲劳 `maxMonthlyFatigue` 默认 40 + 月高强 `maxMonthlyHeavyCount` 默认 8（0=禁整月高强），均每人字段、自然月固定窗口硬拦三态文案
-  - 连任 `tenureLimit` 默认 3（0=关闭）：同任务整体按有发生周计期，空窗不中断/他人接手中断/未来计入，拦第 N+1 期；豁免 = 无他人可排时放行（`splitEligible` 分池，auto/替换/分配弹窗一致）
-  - ctx 新增 `heavyByMonth`（月高强计数轨）+ `projectWeeks`/`tenure`（连任表），buildContext 聚合 / cloneCtx 深拷贝 / accumulateDelta ±
-  - 验证：167 单测全绿；UI（月 chip 红黄/hover/摘要、设置第四组「排班轮换」、人员卡/编辑弹窗、Excel 列）待 Playwright 冒烟（本批次尚未实测）
+- **09-07 月上限 + 连任 + 月高强（本批次已完成提交）**——实现与语义定稿见 spec §3.2 / §4.2 条目 10-12 / §5.2 / §6 及 docs/superpowers/2026-09-07-month-limit-tenure*（已入库）。要点：月疲劳/月高强 = 每人字段 + 默认（40 / 8，0 = 禁排该周期高强度），自然月固定窗口硬拦三分文案；连任 = 全局 `tenureLimit` 3、0=关闭，同任务按有发生周计期、拦第 N+1 期 + 无他人豁免（`splitEligible` 统一 auto/替换/分配弹窗）；ctx 增 `heavyByMonth` + `projectWeeks`/`tenure` 轨道。167 单测全绿；Playwright 冒烟过：人员卡四上限「周+月」并排平分对齐、设置「默认人员上限」「排班轮换」组、卡片/规则文案；待造数深验项见待办。
 - **dist**：⏳ 旧构建（09-03），需 `node build.js`（Tao 要求时才构建）
 
 ## 🧠 核心决策
@@ -27,6 +23,6 @@
 - 09-07 连任轮换（Tao 拍板）：同任务整体合并计数按"有发生自然周"，空窗不中断、他人接手清零、未来已排定计入段长；全局 `tenureLimit` 默认 3、0 = 关闭；**硬拦 + 无他人可排豁免**（偏好性轮换纪律，无人手时空班更糟，故豁免保运转）；拦第 N+1 期（允许连任 N 期）。
 
 ## ⚠️ 待办与注意
-- **待办**：本批次（月上限/连任/月高强）Playwright 冒烟（分配弹窗豁免上浮、替换/自动豁免、月 chip 红黄、批量删除 tenure 回退）→ 通过后批次提交（含 month-limit design/plan 文档、spec/memory/project_map）；`docs/score-rules.md` 人话手册按 spec §4.2 补月上限/连任段落（config RULE 已同步，score-rules 待补）。
+- **待办**：① 造数深验 UI（月 chip 红黄超限红/接近黄、分配弹窗连任豁免上浮 + 破例条、智能排班预览豁免、批量删除 tenure 计数回退）→ Tao 自查通过后本批可 push；② `docs/score-rules.md` 人话手册按 spec §4.2 补月上限/连任/月高强段落（config RULE 已同步，score-rules 待补）；③ dist 旧构建待 Tao 要求时 `node build.js`。
 - **注意**：Playwright 还原测试数据时勿用 evaluate 直点背景卡片/按钮——会**绕过 modal 遮罩**开出弹窗栈，后续「保存/确认」按钮选择器可能命中底层弹窗 → 误操作/还原失败；还原后核对卡片行 + 弹窗数（modalCount=0）再收尾。加分标签冒烟还原点：人员 tags 清空、任务 bonusTags 清空、无测试班次残留。
 - **注意**：批量多选态会覆盖卡片内小目标（人名 chip / ⚡ / 拖拽）——只拦 card.onclick 不够，相关 handler 都要在该态跳过；外部重渲染自动退出靠 `renderCalendar(container, opts)` 顶部 `if (batchDeleteActive && !opts.keepBatch) exitBatchState()` 兜底。
