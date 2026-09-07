@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
          validateProject, validateStaff, reconcileStaff, parseTags, formatTags,
-         SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf } from '../src/data/model.js';
+         SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
@@ -225,7 +225,7 @@ test('DEFAULT_SETTINGS 默认值', () => {
     dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
     preferredBonus: 15, tagBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
-    defaultMonthlyFatigue: 40, tenureLimit: 3,
+    defaultMonthlyFatigue: 40, defaultMonthlyHeavyCount: 8, tenureLimit: 3,
   });
 });
 
@@ -268,4 +268,25 @@ test('monthlyFatigueLimitOf：显式字段优先，缺省回设置默认', () =>
   assert.equal(monthlyFatigueLimitOf({ maxMonthlyFatigue: 22 }), 22);
   assert.equal(monthlyFatigueLimitOf({}), 40);
   assert.equal(monthlyFatigueLimitOf({}, { defaultMonthlyFatigue: 50 }), 50);
+});
+
+test('createStaff 默认月高强度上限 8；defaults/fields 覆盖（0 合法 = 禁排高强度整月）', () => {
+  assert.equal(createStaff({ id: 'S1', name: '张三' }).maxMonthlyHeavyCount, 8);
+  const d = createStaff({ id: 'S2', name: '李四' }, { maxMonthlyHeavyCount: 4 });
+  assert.equal(d.maxMonthlyHeavyCount, 4);
+  const z = createStaff({ id: 'S3', name: '王五', maxMonthlyHeavyCount: 0 });
+  assert.equal(z.maxMonthlyHeavyCount, 0);
+});
+
+test('validateStaff：月高强度上限 < 0 报错（0 合法）', () => {
+  const neg = createStaff({ id: 'S1', name: '张三', maxMonthlyHeavyCount: -1 });
+  assert.equal(validateStaff(neg).valid, false);
+  const zero = createStaff({ id: 'S2', name: '李四', maxMonthlyHeavyCount: 0 });
+  assert.equal(validateStaff(zero).valid, true);
+});
+
+test('monthlyHeavyLimitOf：显式优先，缺省回设置默认', () => {
+  assert.equal(monthlyHeavyLimitOf({ maxMonthlyHeavyCount: 3 }), 3);
+  assert.equal(monthlyHeavyLimitOf({}), 8);
+  assert.equal(monthlyHeavyLimitOf({}, { defaultMonthlyHeavyCount: 5 }), 5);
 });

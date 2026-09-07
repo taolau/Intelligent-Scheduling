@@ -234,6 +234,35 @@ test('cloneCtx 深拷贝 projectWeeks/tenure：改克隆不影响源 ctx', () =>
   assert.equal(ctx.tenure.get('S1|P1').has('2026-09-07'), false);
 });
 
+test('buildContext 聚合 heavyByMonth：劳累 3 按月计数、非高强度任务不计', () => {
+  const staffs = [createStaff({ id: 'S1', name: '张三' })];
+  const byId = {
+    H3: createProject({ id: 'H3', name: '搬重物', fatigueScore: 3 }),
+    L1: createProject({ id: 'L1', name: '轻松活', fatigueScore: 1 }),
+  };
+  const mk = (date, pid) => createSchedule({ id: 'h' + date + pid, date, projectId: pid, slotLabel: '早', staffIds: ['S1'] });
+  const scheds = [
+    mk('2026-08-03', 'H3'),
+    mk('2026-08-10', 'H3'),
+    mk('2026-08-24', 'L1'),
+    mk('2026-09-07', 'H3'),
+  ];
+  const ctx = buildContext(staffs, scheds, byId, undefined, '2026-08-30');
+  assert.equal(ctx.heavyByMonth.get('S1|2026-08'), 2); // 两单高强度 → 2；轻松不计
+  assert.equal(ctx.heavyByMonth.get('S1|2026-09'), 1);
+  assert.equal(ctx.heavyByMonth.has('S1|2026-08') && ctx.heavyByMonth.get('S1|2026-08') === 2, true);
+});
+
+test('cloneCtx 深拷贝 heavyByMonth：改克隆不影响源 ctx', () => {
+  const staffs = [createStaff({ id: 'S1', name: '张三' })];
+  const byId = { H3: createProject({ id: 'H3', name: '搬重物', fatigueScore: 3 }) };
+  const sch = createSchedule({ id: 'z', date: '2026-08-03', projectId: 'H3', slotLabel: '早', staffIds: ['S1'] });
+  const ctx = buildContext(staffs, [sch], byId, undefined, '2026-08-30');
+  const cl = cloneCtx(ctx);
+  cl.heavyByMonth.set('S1|2026-08', 99);
+  assert.equal(ctx.heavyByMonth.get('S1|2026-08'), 1);
+});
+
 test('recommendSubstitutes: base 空时连任者豁免上榜', () => {
   const a = createStaff({ id: 'A', name: 'A', allowedProjects: ['P101'] });
   // A 上周（8/17）已占 P101；8/24 再排即连任第 2 期，tenureLimit=1 → 本被拦；但只有 A 会 P101 → 豁免上榜

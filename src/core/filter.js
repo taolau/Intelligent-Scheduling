@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, monthlyFatigueLimitOf } from '../data/model.js';
+import { DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { getWeekStart } from './week.js';
 import { tenureRunAfterAdd } from './tenure.js';
 
@@ -53,6 +53,17 @@ export function filterCandidate(staff, schedule, projectById, ctx) {
     if (monthFatigue > monthLimit) reasons.push(`本月劳累积分已超限（上限 ${monthLimit}）`);
     else if (monthFatigue === monthLimit) reasons.push(`本月劳累积分已达上限（${monthLimit}）`);
     else reasons.push(`本月劳累积分将超限（上限 ${monthLimit}）`);
+  }
+
+  // 月高强度次数上限：自然月累计（YYYY-MM）；0 = 禁排高强度整个自然月（对齐周字段 0 语义）
+  if (project.fatigueScore === 3) {
+    const monthHeavy = ctx.heavyByMonth?.get(`${staff.id}|${schedule.date.slice(0, 7)}`) ?? 0;
+    const monthHeavyLimit = monthlyHeavyLimitOf(staff, ctx.settings);
+    if (monthHeavy + 1 > monthHeavyLimit) {
+      if (monthHeavy > monthHeavyLimit) reasons.push(`本月高强度次数已超限（上限 ${monthHeavyLimit} 次）`);
+      else if (monthHeavy === monthHeavyLimit) reasons.push(`本月高强度次数已达上限（${monthHeavyLimit} 次）`);
+      else reasons.push(`本月高强度次数将超限（上限 ${monthHeavyLimit} 次）`);
+    }
   }
 
   // 同任务连任上限：tenureLimit>0 生效；允许连任 N 期，第 N+1 期强制轮换（0 = 关闭）

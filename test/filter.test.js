@@ -10,7 +10,7 @@ const projectById = { P101, P102, P103 };
 
 // slot 日期 2026-08-24 恰为周一 → 周键 = 'S1|2026-08-24'
 function base() {
-  return { schedules: [], fatigueByWeek: new Map(), heavyByWeek: new Map(), fatigueByMonth: new Map(),
+  return { schedules: [], fatigueByWeek: new Map(), heavyByWeek: new Map(), fatigueByMonth: new Map(), heavyByMonth: new Map(),
            dailyCounts: new Map(), slotCounts: new Map(), projectWeeks: new Map(), tenure: new Map(),
            settings: { ...DEFAULT_SETTINGS } };
 }
@@ -289,6 +289,53 @@ test('连任：tenureLimit=0 关闭该约束', () => {
   const ctx = ctxWithTenure(0, [['P101', ['2026-08-17', '2026-08-24']]], { '2026-08-17': 1 });
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.equal(r.ok, true);
+});
+
+// —— 月高强度次数上限（R1b）：自然月累计，仅劳累 3；0 = 禁排高强度整个自然月 ——
+
+test('月高强度：cur 达上限（8/8）拒、超上限（10/8）拒、未达放行', () => {
+  const at = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'], maxMonthlyHeavyCount: 8 });
+  const c1 = base();
+  c1.heavyByMonth.set('S1|2026-08', 8); // 已 8，再来高强度 → 超
+  const r1 = filterCandidate(at, slot, projectById, c1); // slot 为 P101（3 分）
+  assert.equal(r1.ok, false);
+  assert.ok(r1.reasons.some(x => x.includes('高强度') && x.includes('已达上限')));
+
+  const over = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P101'], maxMonthlyHeavyCount: 8 });
+  const c2 = base();
+  c2.heavyByMonth.set('S2|2026-08', 10);
+  const r2 = filterCandidate(over, slot, projectById, c2);
+  assert.equal(r2.ok, false);
+  assert.ok(r2.reasons.some(x => x.includes('高强度') && x.includes('已超限')));
+
+  const ok = createStaff({ id: 'S3', name: '王五', allowedProjects: ['P101'], maxMonthlyHeavyCount: 8 });
+  const c3 = base();
+  c3.heavyByMonth.set('S3|2026-08', 7);
+  const r3 = filterCandidate(ok, slot, projectById, c3); // 7+1=8 = 上限 → 放行
+  assert.equal(r3.ok, true);
+});
+
+test('月高强度：0 = 禁排高强度整个自然月', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'], maxMonthlyHeavyCount: 0 });
+  const r = filterCandidate(s, slot, projectById, base()); // P101 3 分，任何一单都超 0
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('高强度')));
+});
+
+test('月高强度：非高强度任务（疲劳 1/2）不受月高强度上限约束', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P102'], maxMonthlyHeavyCount: 0 });
+  const slotLight = { date: '2026-08-24', projectId: 'P102', slotLabel: '早' }; // P102 疲劳 1
+  const r = filterCandidate(s, slotLight, projectById, base());
+  assert.equal(r.ok, true);
+});
+
+test('月高强度：未显式字段回落设置默认（8），本月 9+ 则拦', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101'] }); // 无 maxMonthlyHeavyCount
+  const ctx = base();
+  ctx.heavyByMonth.set('S1|2026-08', 9);
+  const r = filterCandidate(s, slot, projectById, ctx); // 9+1>8 → 拦
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('高强度') && x.includes('超限')));
 });
 
 test('连任拒绝为唯一原因时 tenureOnly=true；与其他拒绝并存时 false', () => {

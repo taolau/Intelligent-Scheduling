@@ -16,6 +16,7 @@ export function accumulateDelta(ctxObj, project, sch, sid, sign) {
   ctxObj.fatigueByMonth.set(mk, Math.max(0, (ctxObj.fatigueByMonth.get(mk) ?? 0) + d));
   if (project.fatigueScore === 3) {
     ctxObj.heavyByWeek.set(wk, Math.max(0, (ctxObj.heavyByWeek.get(wk) ?? 0) + sign));
+    ctxObj.heavyByMonth.set(mk, Math.max(0, (ctxObj.heavyByMonth.get(mk) ?? 0) + sign));
   }
   ctxObj.dailyCounts.set(`${sid}|${sch.date}`, Math.max(0, (ctxObj.dailyCounts.get(`${sid}|${sch.date}`) ?? 0) + sign));
   ctxObj.slotCounts.set(`${sid}|${sch.date}|${sch.slotLabel}`, Math.max(0, (ctxObj.slotCounts.get(`${sid}|${sch.date}|${sch.slotLabel}`) ?? 0) + sign));

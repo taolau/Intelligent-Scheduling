@@ -13,6 +13,7 @@ export function buildContext(staffs, schedules, projectById, settings = DEFAULT_
   const fatigueByWeek = new Map();
   const heavyByWeek = new Map();
   const fatigueByMonth = new Map();
+  const heavyByMonth = new Map();
   const dailyCounts = new Map();
   const slotCounts = new Map();
   for (const sch of schedules) {
@@ -25,9 +26,12 @@ export function buildContext(staffs, schedules, projectById, settings = DEFAULT_
       if (inWindow) fatigueWindow.set(sid, (fatigueWindow.get(sid) ?? 0) + project.fatigueScore);
       const wk = `${sid}|${weekKeyBase}`;
       fatigueByWeek.set(wk, (fatigueByWeek.get(wk) ?? 0) + project.fatigueScore);
-      if (project.fatigueScore === 3) heavyByWeek.set(wk, (heavyByWeek.get(wk) ?? 0) + 1);
       const mk = `${sid}|${monthKeyBase}`;
       fatigueByMonth.set(mk, (fatigueByMonth.get(mk) ?? 0) + project.fatigueScore);
+      if (project.fatigueScore === 3) {
+        heavyByWeek.set(wk, (heavyByWeek.get(wk) ?? 0) + 1);
+        heavyByMonth.set(mk, (heavyByMonth.get(mk) ?? 0) + 1);
+      }
       dailyCounts.set(`${sid}|${sch.date}`, (dailyCounts.get(`${sid}|${sch.date}`) ?? 0) + 1);
       slotCounts.set(`${sid}|${sch.date}|${sch.slotLabel}`, (slotCounts.get(`${sid}|${sch.date}|${sch.slotLabel}`) ?? 0) + 1);
     }
@@ -51,7 +55,7 @@ export function buildContext(staffs, schedules, projectById, settings = DEFAULT_
   for (const [pid, set] of projectWeeks) projectWeeks.set(pid, [...set].sort());
 
   const teamAvg = computeTeamAvg(staffs, fatigueWindow);
-  return { fatigueWindow, fatigueByWeek, heavyByWeek, fatigueByMonth, teamAvg, fatigueCutoff: cutoff, schedules, dailyCounts, slotCounts, settings, projectWeeks, tenure };
+  return { fatigueWindow, fatigueByWeek, heavyByWeek, fatigueByMonth, heavyByMonth, teamAvg, fatigueCutoff: cutoff, schedules, dailyCounts, slotCounts, settings, projectWeeks, tenure };
 }
 
 // 深拷贝 ctx 的全部计数 Map（值均为数字，逐 Map new 即可）；视图层模拟操作（拖拽预演/自动填充预览）共用
@@ -62,6 +66,7 @@ export function cloneCtx(c) {
     fatigueByWeek: new Map(c.fatigueByWeek ?? []),
     heavyByWeek: new Map(c.heavyByWeek ?? []),
     fatigueByMonth: new Map(c.fatigueByMonth ?? []),
+    heavyByMonth: new Map(c.heavyByMonth ?? []),
     dailyCounts: new Map(c.dailyCounts ?? []),
     slotCounts: new Map(c.slotCounts ?? []),
     projectWeeks: new Map([...(c.projectWeeks ?? [])].map(([k, arr]) => [k, [...arr]])),
