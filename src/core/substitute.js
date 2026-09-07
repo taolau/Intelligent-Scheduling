@@ -32,8 +32,26 @@ export function buildContext(staffs, schedules, projectById, settings = DEFAULT_
       slotCounts.set(`${sid}|${sch.date}|${sch.slotLabel}`, (slotCounts.get(`${sid}|${sch.date}|${sch.slotLabel}`) ?? 0) + 1);
     }
   }
+  // 连任辅助表：projectWeeks = 各任务"有发生周"升序；tenure = 各人各任务每周占有计数
+  const projectWeeks = new Map();
+  const tenure = new Map();
+  for (const sch of schedules) {
+    const project = projectById[sch.projectId];
+    if (!project) continue;
+    const wsKey = getWeekStart(sch.date);
+    if (!projectWeeks.has(project.id)) projectWeeks.set(project.id, new Set());
+    projectWeeks.get(project.id).add(wsKey);
+    for (const sid of sch.staffIds) {
+      const key = `${sid}|${project.id}`;
+      if (!tenure.has(key)) tenure.set(key, new Map());
+      const m = tenure.get(key);
+      m.set(wsKey, (m.get(wsKey) ?? 0) + 1);
+    }
+  }
+  for (const [pid, set] of projectWeeks) projectWeeks.set(pid, [...set].sort());
+
   const teamAvg = computeTeamAvg(staffs, fatigueWindow);
-  return { fatigueWindow, fatigueByWeek, heavyByWeek, fatigueByMonth, teamAvg, fatigueCutoff: cutoff, schedules, dailyCounts, slotCounts, settings };
+  return { fatigueWindow, fatigueByWeek, heavyByWeek, fatigueByMonth, teamAvg, fatigueCutoff: cutoff, schedules, dailyCounts, slotCounts, settings, projectWeeks, tenure };
 }
 
 // 深拷贝 ctx 的全部计数 Map（值均为数字，逐 Map new 即可）；视图层模拟操作（拖拽预演/自动填充预览）共用
@@ -46,6 +64,8 @@ export function cloneCtx(c) {
     fatigueByMonth: new Map(c.fatigueByMonth ?? []),
     dailyCounts: new Map(c.dailyCounts ?? []),
     slotCounts: new Map(c.slotCounts ?? []),
+    projectWeeks: new Map([...(c.projectWeeks ?? [])].map(([k, arr]) => [k, [...arr]])),
+    tenure: new Map([...(c.tenure ?? [])].map(([k, m]) => [k, new Map(m)])),
   };
 }
 

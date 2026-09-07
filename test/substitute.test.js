@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildContext, recommendSubstitutes, narrateReasons } from '../src/core/substitute.js';
-import { createStaff, createProject } from '../src/data/model.js';
+import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx } from '../src/core/substitute.js';
+import { createStaff, createProject, createSchedule } from '../src/data/model.js';
 
 const P101 = createProject({ id: 'P101', name: '搬运', fatigueScore: 2, slots: [{ label: '上午', startTime: '08:00', endTime: '12:00' }] });
 const projectById = { P101 };
@@ -191,4 +191,45 @@ test('narrateReasons: 标签命中 reason 为空不产生「带标签」空行',
     [{ label: '标签加分', points: 15, reason: '' }, { label: '均衡加分', points: 0, reason: '旧黑话' }],
     { fatigueWindow: new Map([['S9', 5]]), teamAvg: 5 });
   assert.deepEqual(lines, []);
+});
+
+test('buildContext 聚合 projectWeeks：同任务多周去重升序、跨 slot 归同周、孤儿跳过', () => {
+  const staffs = [createStaff({ id: 'S1', name: '张三' })];
+  const mk = (date, pid, staffIds) => createSchedule({ id: 'x' + date + pid, date, projectId: pid, slotLabel: '早', staffIds });
+  const byId = { P1: createProject({ id: 'P1', name: '搬运', fatigueScore: 1 }) };
+  const scheds = [
+    mk('2026-08-24', 'P1', ['S1']), // 周一 → 周 8/24
+    mk('2026-08-28', 'P1', ['S1']), // 周五，同周 → 不新增周
+    mk('2026-08-31', 'P1', []),     // 下周一空壳班，也算有发生周
+    mk('2026-09-01', 'PX', ['S1']), // 孤儿任务 → 跳过
+  ];
+  const ctx = buildContext(staffs, scheds, byId, undefined, '2026-08-30');
+  assert.deepEqual(ctx.projectWeeks.get('P1'), ['2026-08-24', '2026-08-31']);
+  assert.equal(ctx.projectWeeks.has('PX'), false);
+});
+
+test('buildContext 聚合 tenure：按 staff×project 周计 count（同周多班累加）', () => {
+  const staffs = [createStaff({ id: 'S1', name: '张三' }), createStaff({ id: 'S2', name: '李四' })];
+  const byId = { P1: createProject({ id: 'P1', name: '搬运', fatigueScore: 1 }) };
+  const mk = (date, pid, staffIds) => createSchedule({ id: 'y' + date, date, projectId: pid, slotLabel: '早', staffIds });
+  const scheds = [
+    mk('2026-08-24', 'P1', ['S1']),
+    mk('2026-08-24', 'P1', ['S1']), // 同周第二班 → count 2
+    mk('2026-08-31', 'P1', ['S2']),
+  ];
+  const ctx = buildContext(staffs, scheds, byId, undefined, '2026-08-30');
+  assert.equal(ctx.tenure.get('S1|P1').get('2026-08-24'), 2);
+  assert.equal(ctx.tenure.get('S2|P1').get('2026-08-31'), 1);
+});
+
+test('cloneCtx 深拷贝 projectWeeks/tenure：改克隆不影响源 ctx', () => {
+  const staffs = [createStaff({ id: 'S1', name: '张三' })];
+  const byId = { P1: createProject({ id: 'P1', name: '搬运', fatigueScore: 1 }) };
+  const sch = createSchedule({ id: 'z', date: '2026-08-24', projectId: 'P1', slotLabel: '早', staffIds: ['S1'] });
+  const ctx = buildContext(staffs, [sch], byId, undefined, '2026-08-30');
+  const cl = cloneCtx(ctx);
+  cl.projectWeeks.get('P1').push('2026-09-07');
+  cl.tenure.get('S1|P1').set('2026-09-07', 1);
+  assert.equal(ctx.projectWeeks.get('P1').length, 1);
+  assert.equal(ctx.tenure.get('S1|P1').has('2026-09-07'), false);
 });
