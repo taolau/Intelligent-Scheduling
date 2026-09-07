@@ -8,7 +8,7 @@ import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
 import { exportTaskViewImage } from '../ui/exportImage.js';
 import { toDateStr } from '../core/week.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS, monthlyFatigueLimitOf } from '../data/model.js';
 import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
 
 function esc(v) {
@@ -336,6 +336,7 @@ async function renderStaffs(head, scroll) {
         <div class="cfg-row"><span class="k">不合适</span><span class="v">${banned}</span></div>
         <div class="cfg-row"><span class="k">标签</span><span class="v">${tagsHtml}</span></div>
         <div class="cfg-row"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></div>
+        <div class="cfg-row"><span class="k">月疲劳上限</span><span class="v">${monthlyFatigueLimitOf(s, getSettings())}</span></div>
         <div class="cfg-row"><span class="k">高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></div>
       </div>
       <div class="cfg-card-ops">
@@ -499,6 +500,13 @@ async function editStaffDialog(staff) {
   heavyInput.value = target.maxHeavyTaskCount;
   const heavyF = field({ label: '高强度次数上限', control: heavyInput });
 
+  const monthFatigueInput = document.createElement('input');
+  monthFatigueInput.className = 'input';
+  monthFatigueInput.type = 'number';
+  monthFatigueInput.min = 1;
+  monthFatigueInput.value = target.maxMonthlyFatigue ?? getSettings().defaultMonthlyFatigue;
+  const monthF = field({ label: '月疲劳上限', control: monthFatigueInput });
+
   const limitRow = document.createElement('div');
   limitRow.className = 'field-pair';
   limitRow.append(fatigueF.wrap, heavyF.wrap);
@@ -544,7 +552,7 @@ async function editStaffDialog(staff) {
   const headPair = document.createElement('div');
   headPair.className = 'field-pair';
   headPair.append(nameF.wrap, statusF.wrap);
-  body.append(headPair, limitRow, allowedF.wrap, bannedEditor.el, preferredEditor.el, tagsF.wrap);
+  body.append(headPair, limitRow, monthF.wrap, allowedF.wrap, bannedEditor.el, preferredEditor.el, tagsF.wrap);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -565,6 +573,7 @@ async function editStaffDialog(staff) {
       bannedProjects: bannedEditor.collect(),
       maxWeeklyFatigue: Number(fatigueInput.value),
       maxHeavyTaskCount: Number(heavyInput.value),
+      maxMonthlyFatigue: Number(monthFatigueInput.value),
       tags: tagsCtrl.value,
     });
     // 三列表关系预检（名称级提示）：矛盾不代改，列出后由用户按顺序化解
@@ -590,6 +599,7 @@ async function editStaffDialog(staff) {
       setError(nameF, byField.name?.join('；') || '');
       setError(fatigueF, byField.maxWeeklyFatigue?.join('；') || '');
       setError(heavyF, byField.maxHeavyTaskCount?.join('；') || '');
+      setError(monthF, byField.maxMonthlyFatigue?.join('；') || '');
       setError(allowedF, byField.allowedProjects?.join('；') || '');
       if (byField.bannedProjects) showToast(byField.bannedProjects.join('；'), 'error');
       if (byField.preferredProjects) showToast(byField.preferredProjects.join('；'), 'error');
