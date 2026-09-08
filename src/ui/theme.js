@@ -447,6 +447,16 @@ body { display:flex; height:100vh; overflow:hidden; }
   box-shadow:0 2px 6px rgba(90,29,120,.22); }
 .cal-date:hover .cal-add-day { opacity:1; }
 .cal-today-flag { position:absolute; top:4px; left:4px; color:#5a1d78; }
+.cal-day-btn { position:absolute; top:50%; right:33px; transform:translateY(-50%);
+  width:22px; height:22px; border:none; border-radius:7px;
+  background:#fff; color:#8b5fa8; cursor:pointer; padding:0;
+  display:flex; align-items:center; justify-content:center; opacity:0;
+  box-shadow:0 1px 3px rgba(90,29,120,.14);
+  transition:opacity .15s, transform .15s, box-shadow .15s, color .15s; }
+.cal-day-btn:hover { color:#5a1d78; transform:translateY(-50%) scale(1.06);
+  box-shadow:0 2px 6px rgba(90,29,120,.22); }
+.cal-date:hover .cal-day-btn { opacity:1; }
+.cal-grid.readonly .cal-day-btn { right:6px; } /* 人员只读维度无建班次钮，当日钮贴右缘 */
 
 .cal-slot-card { position:relative; border-radius:10px; padding:6px;
   display:flex; flex-direction:column; gap:4px; }
@@ -566,6 +576,33 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .tview-ddot { color:#cdc5d8; }
 .tview-desc { margin-top:8px; font-size:15px; color:#3d3547; line-height:1.8; white-space:pre-wrap; word-break:break-all; }
 .tview-desc.empty { color:#b0a6bc; }
+
+/* ===== 当日排班弹窗（.day-*：日期列头日历钮入口，只读清单 + 导出图片） ===== */
+.box-day { max-width:1040px; } /* modal-box 宽款：班次卡横排成行，一行约 4 张 */
+.box-day .modal-body { padding:18px 22px; }
+.day-list { display:flex; flex-direction:column; gap:18px; }
+.day-group-head { display:flex; align-items:center; gap:12px; }
+.day-head-tag { display:inline-flex; align-items:center; background:#efe3f6; color:#48115f;
+  font-size:13px; font-weight:600; line-height:1.5; padding:3px 13px; border-radius:999px;
+  border:1px solid #e6d8f1; }
+.day-group-line { flex:1; height:1px; background:#e6daf0; }
+.day-group-cards { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; }
+.day-item { flex:1 1 240px; min-width:240px; background:#fff; border:1px solid #eae1f3;
+  border-radius:12px; padding:12px 14px; display:flex; flex-direction:column;
+  box-shadow:0 1px 3px rgba(90,29,120,.05); }
+.day-group-cards.single .day-item { flex:none; } /* 时段仅一张卡时按内容宽，不拉满整行 */
+.day-item-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.day-fire { flex:none; display:inline-flex; align-items:center; gap:2px; margin-top:1px;
+  padding:2px 8px; border-radius:999px; background:#fef1e7; }
+.day-fire svg { display:block; }
+.day-item-name { font-weight:700; font-size:17px; color:#1e1926; line-height:1.45; word-break:break-all; }
+.day-item-meta { margin-top:5px; display:flex; align-items:baseline; flex-wrap:wrap;
+  gap:5px; font-size:13px; color:#9b91a7; }
+.day-item-meta .time { color:#8b728f; }
+.day-item-meta .names { color:#2a2430; font-weight:600; } /* 执行人主信息：深色加粗 */
+.day-item-meta.empty { color:#b0a6bc; } /* 无人排班：灰字弱化（时段/时间段信息仍在） */
+.day-item-desc { margin-top:7px; font-size:12px; color:#7a6f84; line-height:1.65;
+  white-space:pre-wrap; word-break:break-all; } /* 说明 = 次要信息：小字灰弱化 */
 
 /* ===== 系统设置页 ===== */
 .cfg-split { display:flex; gap:12px; height:100%; min-height:0; }
