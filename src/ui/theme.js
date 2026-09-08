@@ -459,8 +459,8 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-date b { display:block; font-size:11px; font-weight:500; color:#6a6178; margin-top:2px; }
 .cal-date.cal-today { background:#efe3f6; color:#5a1d78; }
 .cal-date.cal-today b { color:#5a1d78; font-weight:600; }
-.cal-add-day { position:absolute; top:50%; right:6px; transform:translateY(-50%);
-  width:22px; height:22px; border:none; border-radius:7px;
+.cal-add-day { position:absolute; top:50%; right:5px; transform:translateY(-50%);
+  width:18px; height:18px; border:none; border-radius:6px;
   background:#fff; color:#8b5fa8; cursor:pointer; padding:0;
   display:flex; align-items:center; justify-content:center; opacity:0;
   box-shadow:0 1px 3px rgba(90,29,120,.14);
@@ -469,8 +469,8 @@ body { display:flex; height:100vh; overflow:hidden; }
   box-shadow:0 2px 6px rgba(90,29,120,.22); }
 .cal-date:hover .cal-add-day { opacity:1; }
 .cal-today-flag { position:absolute; top:4px; left:4px; color:#5a1d78; }
-.cal-day-btn { position:absolute; top:50%; right:33px; transform:translateY(-50%);
-  width:22px; height:22px; border:none; border-radius:7px;
+.cal-day-btn { position:absolute; top:50%; right:28px; transform:translateY(-50%);
+  width:18px; height:18px; border:none; border-radius:6px;
   background:#fff; color:#8b5fa8; cursor:pointer; padding:0;
   display:flex; align-items:center; justify-content:center; opacity:0;
   box-shadow:0 1px 3px rgba(90,29,120,.14);
@@ -478,7 +478,7 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-day-btn:hover { color:#5a1d78; transform:translateY(-50%) scale(1.06);
   box-shadow:0 2px 6px rgba(90,29,120,.22); }
 .cal-date:hover .cal-day-btn { opacity:1; }
-.cal-grid.readonly .cal-day-btn { right:6px; } /* 人员只读维度无建班次钮，当日钮贴右缘 */
+.cal-grid.readonly .cal-day-btn { right:5px; } /* 人员只读维度无建班次钮，当日钮贴右缘 */
 
 .cal-slot-card { position:relative; border-radius:10px; padding:6px;
   display:flex; flex-direction:column; gap:4px; }
@@ -525,7 +525,10 @@ body { display:flex; height:100vh; overflow:hidden; }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sch-meta { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#6a6178; }
 .sch-time { color:#9b91a7; font-size:10px; }
-.sch-badge { display:inline-flex; align-items:center; gap:1px; }
+/* 劳累指数橙底胶囊：排班卡 meta / 当日弹窗 / 任务卡侧边统一。padding 1px 使总高=火高+2，不撑高卡片 */
+.fire-badge { flex:none; display:inline-flex; align-items:center; gap:2px;
+  padding:1px 7px; border-radius:999px; background:#fef1e7; }
+.fire-badge svg { display:block; }
 .sch-staff { display:flex; flex-wrap:wrap; }
 .sch-capacity { font-size:11px; color:#d97706; font-weight:500; }
 .sch-capacity.ok { color:#16a34a; }
@@ -614,9 +617,6 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
   box-shadow:0 1px 3px rgba(90,29,120,.05); }
 .day-group-cards.single .day-item { flex:none; } /* 时段仅一张卡时按内容宽，不拉满整行 */
 .day-item-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
-.day-fire { flex:none; display:inline-flex; align-items:center; gap:2px; margin-top:1px;
-  padding:2px 8px; border-radius:999px; background:#fef1e7; }
-.day-fire svg { display:block; }
 .day-item-name { font-weight:700; font-size:17px; color:#1e1926; line-height:1.45; word-break:break-all; }
 .day-item-meta { margin-top:5px; display:flex; align-items:baseline; flex-wrap:wrap;
   gap:5px; font-size:13px; color:#9b91a7; }

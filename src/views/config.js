@@ -758,7 +758,7 @@ async function renderProjects(head, scroll) {
         ${activeBadge(p.active)}
       </div>
       <div class="cfg-card-rows">
-        <div class="cfg-row"><span class="k">劳累指数</span><span class="v">${ICON_FIRE.repeat(p.fatigueScore)}</span></div>
+        <div class="cfg-row"><span class="k">劳累指数</span><span class="v"><span class="fire-badge">${ICON_FIRE.repeat(p.fatigueScore)}</span></span></div>
         <div class="cfg-row"><span class="k">所需人数</span><span class="v">${p.requiredCapacity} 人</span></div>
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
@@ -868,7 +868,7 @@ function buildTaskViewItem(p) {
   name.textContent = p.name;
   const side = document.createElement('div');
   side.className = 'tview-side';
-  side.innerHTML = `${ICON_FIRE.repeat(p.fatigueScore)}<span>${p.requiredCapacity} 人</span>`;
+  side.innerHTML = `<span class="fire-badge">${ICON_FIRE.repeat(p.fatigueScore)}</span><span>${p.requiredCapacity} 人</span>`;
   top.append(name, side);
   const time = document.createElement('div');
   time.className = 'tview-time';

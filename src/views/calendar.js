@@ -63,8 +63,8 @@ const ICON_BULK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
-const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
-const ICON_DAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
+const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
+const ICON_DAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;display:block"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 
 export async function renderCalendar(container, opts = {}) {
   // 批量删除多选态：任何外部触发/重渲染自动退出（本态进入/退出自渲染走 opts.keepBatch）
@@ -509,7 +509,7 @@ function buildDayItem(sch, projectById, staffById) {
   top.appendChild(name);
   if (p) {
     const fire = document.createElement('span');
-    fire.className = 'day-fire';
+    fire.className = 'fire-badge';
     fire.title = `劳累指数 ${p.fatigueScore}/3`;
     fire.innerHTML = ICON_FIRE.repeat(p.fatigueScore);
     top.appendChild(fire);
@@ -646,7 +646,7 @@ function renderScheduleCard(sch, readOnly = false) {
       meta.appendChild(time);
     }
     const badge = document.createElement('span');
-    badge.className = 'sch-badge';
+    badge.className = 'fire-badge';
     badge.innerHTML = ICON_FIRE.repeat(project.fatigueScore);
     badge.title = `劳累指数 ${project.fatigueScore}/3`;
     meta.appendChild(badge);
@@ -848,7 +848,7 @@ function scheduleDialog(sch) {
     head.className = 'asg-head';
     const titleRow = document.createElement('div');
     titleRow.className = 'asg-title';
-    titleRow.innerHTML = `<span>${project?.name ?? draft.projectId}</span>${project ? `<span class="sch-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
+    titleRow.innerHTML = `<span>${project?.name ?? draft.projectId}</span>${project ? `<span class="fire-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
     const sub = document.createElement('div');
     sub.className = 'asg-sub';
     sub.innerHTML = `${draft.date} · ${draft.slotLabel}${project?.timeRange ? ` · ${project.timeRange.start}–${project.timeRange.end}` : ''}`;
