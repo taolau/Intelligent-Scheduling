@@ -136,3 +136,15 @@ test('simulateAutoFill: 连任豁免 — 无他人可选时允许同一人连任
   assert.deepEqual(r1.sch.staffIds, ['A']);
   assert.deepEqual(r2.sch.staffIds, ['A']); // base 空（无人会 P1）→ 豁免 A 连任
 });
+
+test('simulateAutoFill: 时间安排不可用 → 跳过高分/靠前者选他人（硬过滤贯通）', () => {
+  const staffs = [mkStaff('A'), mkStaff('B')];
+  const byId = { P1: createProject({ id: 'P1', name: '值守', fatigueScore: 1, requiredCapacity: 1, slots: [{ label: '早' }], timeRange: { start: '10:00', end: '12:00' } }) };
+  staffs[0].availability = { mode: 'available', entries: [{ weekDays: [1], start: '09:00', end: '12:00' }] }; // A 仅周一可用
+  const tue = sch('S1', '2026-09-08', '早'); // 2026-09-08 为周二
+  const ctx = mkCtx(staffs, [], byId);
+  const [r] = simulateAutoFill([tue], staffs, byId, ctx);
+  assert.deepEqual(r.sch.staffIds, ['B']);
+  assert.deepEqual(r.added, ['B']);
+  assert.equal(r.full, true);
+});

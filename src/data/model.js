@@ -48,6 +48,7 @@ export function createStaff(fields = {}, defaults = {}) {
     joinedAt: fields.joinedAt ?? Date.now(),   // 加入时间戳，卡片排序用
     restFrom: fields.restFrom ?? null,         // 休假前状态（'new'|'active'），开关恢复用
     tags: fields.tags ?? [],                   // 自由文本标签（String[]，多人管理/筛选用）
+    availability: fields.availability ?? null, // 每周时间安排（null=不限制）
   };
 }
 
@@ -79,6 +80,27 @@ function problems(checks) {
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export function isValidTimeRange(tr) {
   return !!tr && HHMM.test(tr.start) && HHMM.test(tr.end) && tr.start < tr.end;
+}
+
+export function availabilityProblem(availability) {
+  if (availability == null) return '';
+  if (typeof availability !== 'object' || Array.isArray(availability)) return '每周时间安排格式不正确';
+  if (!['available', 'unavailable'].includes(availability.mode)) return '每周时间安排只能选择可用或不可用';
+  if (!Array.isArray(availability.entries) || availability.entries.length === 0) return '每周时间安排请至少添加一个时间段';
+  for (let i = 0; i < availability.entries.length; i++) {
+    const entry = availability.entries[i] ?? {};
+    const days = entry.weekDays;
+    const row = i + 1;
+    if (!Array.isArray(days) || days.length === 0) return `第 ${row} 条请选择星期`;
+    if (new Set(days).size !== days.length || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) return `第 ${row} 条星期不正确`;
+    const hasStart = entry.start != null && entry.start !== '';
+    const hasEnd = entry.end != null && entry.end !== '';
+    // 起止要么同时填（合法区间，禁跨日），要么都不填（= 整天）；单边填视为配置不完整
+    if (hasStart || hasEnd) {
+      if (!isValidTimeRange(entry)) return `第 ${row} 条时间需同时填写开始与结束，且结束晚于开始（不支持跨日；都留空 = 整天）`;
+    }
+  }
+  return '';
 }
 
 export function validateProject(p) {
@@ -123,10 +145,11 @@ export function validateStaff(s) {
     { cond: s.maxHeavyTaskCount < 0, field: 'maxHeavyTaskCount', msg: '高强度次数上限必须 >= 0' },
     { cond: s.maxMonthlyFatigue < 1, field: 'maxMonthlyFatigue', msg: '月疲劳上限必须 >= 1' },
     { cond: s.maxMonthlyHeavyCount < 0, field: 'maxMonthlyHeavyCount', msg: '月高强度次数上限必须 >= 0' },
-    { cond: s.bannedProjects.some(b => !b.projectId), field: 'bannedProjects', msg: '不合适项目必须包含 projectId' },
-    { cond: s.preferredProjects.some(p => !p.projectId), field: 'preferredProjects', msg: '擅长项目必须包含 projectId' },
-    { cond: s.allowedProjects.some(id => s.bannedProjects.some(b => b.projectId === id)), field: 'allowedProjects', msg: '同一项目不能同时在可胜任与不合适中' },
-    { cond: s.preferredProjects.some(p => !s.allowedProjects.includes(p.projectId)), field: 'preferredProjects', msg: '擅长项目必须同时是可胜任项目' },
+    { cond: s.bannedProjects.some(b => !b.projectId), field: 'bannedProjects', msg: '不合适任务不能为空' },
+    { cond: s.preferredProjects.some(p => !p.projectId), field: 'preferredProjects', msg: '擅长任务不能为空' },
+    { cond: s.allowedProjects.some(id => s.bannedProjects.some(b => b.projectId === id)), field: 'allowedProjects', msg: '同一任务不能同时在可胜任与不合适中' },
+    { cond: s.preferredProjects.some(p => !s.allowedProjects.includes(p.projectId)), field: 'preferredProjects', msg: '擅长任务必须同时是可胜任任务' },
+    { cond: !!availabilityProblem(s.availability), field: 'availability', msg: availabilityProblem(s.availability) },
   ]);
   return { valid: errors.length === 0, errors };
 }

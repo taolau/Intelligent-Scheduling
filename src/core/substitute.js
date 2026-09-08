@@ -1,4 +1,4 @@
-import { filterCandidate } from './filter.js';
+import { filterCandidate, checkAvailability } from './filter.js';
 import { computeTeamAvg, scoreCandidate } from './score.js';
 import { getWeekStart, monthKey, todayStr, parseDate, toDateStr } from './week.js';
 import { DEFAULT_SETTINGS } from '../data/model.js';
@@ -137,7 +137,9 @@ export function recommendSubstitutes(staffs, schedule, projectById, ctx, exclude
       settings: ctx.settings,
     });
     const reasons = narrateReasons(staff, schedule, projectById, breakdown, ctx);
-    scored.push({ staff, score, reasons, breakdown });
+    // 放行但需提醒的情形（如可用日仅设时段 + 未定时任务）：随候选带出，供界面黄字提示
+    const warning = checkAvailability(staff, schedule, projectById[schedule.projectId]).warn;
+    scored.push({ staff, score, reasons, breakdown, warning });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored;

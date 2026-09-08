@@ -24,7 +24,6 @@ const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
 const ICON_VIEW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M19 12H5m0 0l6 6m-6-6l6-6"/></svg>';
-const EFFORT_WORDS = ['', '轻松', '中等', '高强度'];
 const SLOT_ORDER = new Map(SLOT_LABELS.map((l, i) => [l, i]));
 
 const TAB_DEFS = [
@@ -314,17 +313,20 @@ async function renderStaffs(head, scroll) {
     return (b.joinedAt ?? 0) - (a.joinedAt ?? 0);
   });
   for (const s of sorted) {
-    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join('') || '<span class="empty">—</span>';
-    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join('') || '<span class="empty">—</span>';
+    const pref = s.preferredProjects.map(p => `<span class="tag" title="${esc(p.reason ?? '')}">${esc(projName.get(p.projectId) ?? p.projectId)}</span>`).join('') || '<span class="empty">未设置</span>';
+    const banned = s.bannedProjects.map(b => `<span class="tag tag-danger" title="${esc(b.reason ?? '')}">${esc(projName.get(b.projectId) ?? b.projectId)}</span>`).join('') || '<span class="empty">未设置</span>';
     const allowed = s.allowedProjects.length
       ? s.allowedProjects.map(id => `<span class="tag">${esc(projName.get(id) ?? id)}</span>`).join('')
-      : '<span class="empty">—</span>';
+      : '<span class="empty">未设置</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
     card.dataset.tagsJson = JSON.stringify(s.tags ?? []);
     const tagsHtml = (s.tags ?? []).length
       ? s.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
-      : '<span class="empty">—</span>';
+      : '<span class="empty">未设置</span>';
+    const timeHtml = s.availability
+      ? `<span class="tag">已配置(${s.availability.mode === 'unavailable' ? '不可用' : '可用'})</span>`
+      : '<span class="empty">未设置</span>';
     card.innerHTML = `
       <div class="cfg-card-head">
         <span class="cfg-card-title">${esc(s.name)}</span>
@@ -335,6 +337,7 @@ async function renderStaffs(head, scroll) {
         <div class="cfg-row"><span class="k">擅长</span><span class="v">${pref}</span></div>
         <div class="cfg-row"><span class="k">不合适</span><span class="v">${banned}</span></div>
         <div class="cfg-row"><span class="k">标签</span><span class="v">${tagsHtml}</span></div>
+        <div class="cfg-row"><span class="k">时间安排</span><span class="v">${timeHtml}</span></div>
         <div class="cfg-row cfg-duo"><span class="duo-pair"><span class="k">周疲劳上限</span><span class="v">${s.maxWeeklyFatigue}</span></span><span class="duo-pair"><span class="k">月疲劳上限</span><span class="v">${monthlyFatigueLimitOf(s, getSettings())}</span></span></div>
         <div class="cfg-row cfg-duo"><span class="duo-pair"><span class="k">周高强度上限</span><span class="v">${s.maxHeavyTaskCount}</span></span><span class="duo-pair"><span class="k">月高强度上限</span><span class="v">${monthlyHeavyLimitOf(s, getSettings())}</span></span></div>
       </div>
@@ -410,20 +413,21 @@ async function editStaffDialog(staff) {
 
   const allowedSel = createSelect({
     multiple: true,
-    placeholder: '请选择可胜任项目',
+    placeholder: '请选择可胜任任务',
     options: projects.map((p) => ({ value: p.id, label: p.name })),
     value: target.allowedProjects,
   });
   let lastAllowed = [...allowedSel.value];
-  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '可多选' });
+  const allowedF = field({ label: '可胜任任务', control: allowedSel, hint: '可多选', help: '只给他排勾选的任务，没勾的不会排给他' });
 
   const preferredEditor = rowsEditor({
-    label: '擅长项目（加分）', addLabel: '＋ 添加擅长项目',
+    label: '擅长任务（加分）', addLabel: '＋ 添加擅长任务',
+    help: '排班优先考虑他擅长的任务，推荐理由会写明你录的原因',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：体力好，搬运熟练' },
     ],
-    initial: target.preferredProjects,
+    initial: (target.preferredProjects || []).length ? target.preferredProjects : [{}], // 默认展开一行空白
     onCell: (colKey, el) => {
       if (colKey !== 'projectId') return;
       el.addEventListener('change', () => {
@@ -431,7 +435,7 @@ async function editStaffDialog(staff) {
         if (!P) return;
         if (bannedEditor.collect().some(r => r.projectId === P)) {
           el.value = '';
-          showToast(`「${pName(P)}」在不合适项目中，请先删除该行再设为擅长`, 'error');
+          showToast(`「${pName(P)}」在不合适任务中，请先删除该行再设为擅长`, 'error');
           return;
         }
         if (!lastAllowed.includes(P)) {
@@ -443,12 +447,13 @@ async function editStaffDialog(staff) {
   });
 
   const bannedEditor = rowsEditor({
-    label: '不合适项目', addLabel: '＋ 添加不合适项目',
+    label: '不合适任务', addLabel: '＋ 添加不合适任务',
+    help: '不适合他的任务（如腰伤别排搬重活），这类任务一定不会排给他',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：腰伤，不宜搬重物' },
     ],
-    initial: target.bannedProjects,
+    initial: (target.bannedProjects || []).length ? target.bannedProjects : [{}], // 默认展开一行空白
     onCell: (colKey, el) => {
       if (colKey !== 'projectId') return;
       el.addEventListener('change', () => {
@@ -456,7 +461,7 @@ async function editStaffDialog(staff) {
         if (!P) return;
         if (preferredEditor.collect().some(r => r.projectId === P)) {
           el.value = '';
-          showToast(`「${pName(P)}」是擅长项目，请先删除其擅长配置再设为不合适`, 'error');
+          showToast(`「${pName(P)}」是擅长任务，请先删除其擅长配置再设为不合适`, 'error');
           return;
         }
         if (lastAllowed.includes(P)) {
@@ -478,8 +483,8 @@ async function editStaffDialog(staff) {
     const clashRemoved = removed.find(id => prefNow.has(id));
     if (clashAdded || clashRemoved) {
       allowedSel.value = lastAllowed;
-      if (clashAdded) showToast(`「${pName(clashAdded)}」在不合适项目中，请先删除该行再设为可胜任`, 'error');
-      else showToast(`「${pName(clashRemoved)}」是擅长项目，请先删除其擅长配置再取消可胜任`, 'error');
+      if (clashAdded) showToast(`「${pName(clashAdded)}」在不合适任务中，请先删除该行再设为可胜任`, 'error');
+      else showToast(`「${pName(clashRemoved)}」是擅长任务，请先删除其擅长配置再取消可胜任`, 'error');
       return;
     }
     lastAllowed = nv;
@@ -490,28 +495,28 @@ async function editStaffDialog(staff) {
   fatigueInput.type = 'number';
   fatigueInput.min = 1;
   fatigueInput.value = target.maxWeeklyFatigue;
-  const fatigueF = field({ label: '周疲劳上限', control: fatigueInput });
+  const fatigueF = field({ label: '周疲劳上限', help: '一周最多累计的劳累分，满了这周就不给他排新班', control: fatigueInput });
 
   const heavyInput = document.createElement('input');
   heavyInput.className = 'input';
   heavyInput.type = 'number';
   heavyInput.min = 0;
   heavyInput.value = target.maxHeavyTaskCount;
-  const heavyF = field({ label: '周高强度上限', control: heavyInput });
+  const heavyF = field({ label: '周高强度上限', help: '最累的活（劳累指数 3）一周最多排几个', control: heavyInput });
 
   const monthFatigueInput = document.createElement('input');
   monthFatigueInput.className = 'input';
   monthFatigueInput.type = 'number';
   monthFatigueInput.min = 1;
   monthFatigueInput.value = target.maxMonthlyFatigue ?? getSettings().defaultMonthlyFatigue;
-  const monthF = field({ label: '月疲劳上限', control: monthFatigueInput });
+  const monthF = field({ label: '月疲劳上限', help: '一个月（1 号~月底）最多累计的劳累分，满了当月不排新班', control: monthFatigueInput });
 
   const monthHeavyInput = document.createElement('input');
   monthHeavyInput.className = 'input';
   monthHeavyInput.type = 'number';
   monthHeavyInput.min = 0;
   monthHeavyInput.value = target.maxMonthlyHeavyCount ?? getSettings().defaultMonthlyHeavyCount;
-  const monthHeavyF = field({ label: '月高强度上限', control: monthHeavyInput });
+  const monthHeavyF = field({ label: '月高强度上限', help: '最累的活（劳累指数 3）一个月最多排几个', control: monthHeavyInput });
 
   const limitRow = document.createElement('div');
   limitRow.className = 'field-pair';
@@ -525,35 +530,90 @@ async function editStaffDialog(staff) {
   const tagPool = [...new Set(staffs.flatMap(s => s.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
   const tagsCtrl = tagsInput({ initial: target.tags ?? [], options: tagPool });
   const tagsF = field({ label: '标签', control: tagsCtrl, hint: '聚焦可选已有标签；输入无匹配时回车即新建，可多个' });
+
+  const WEEKDAY_OPTIONS = [
+    { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
+    { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' }, { value: 0, label: '周日' },
+  ];
+  // 每周时间安排：可用 / 不可用各存各的缓冲（弹窗内切换不互串、不清空）；保存只写当前选中模式的这套
+  const savedAvail = target.availability;
+  const savedMode = savedAvail?.mode ?? 'unavailable'; // 大多数人「避开某些时段」，默认不可用
+  const availBuf = savedMode === 'available' ? [...(savedAvail?.entries ?? [])] : [];
+  const unavailBuf = savedMode === 'unavailable' ? [...(savedAvail?.entries ?? [])] : [];
+  let availabilityMode = savedMode;
+  const bufOf = m => (m === 'available' ? availBuf : unavailBuf);
+  const availabilityEditor = rowsEditor({
+    label: '每周时间安排',
+    help: '限定此人每周可排班 / 要避开的时段（两种模式二选一，只存当前选中的一套）。只选星期不写时间 = 整天；全都不填 = 不限制',
+    addLabel: '＋ 添加时间段',
+    initial: bufOf(availabilityMode).length ? bufOf(availabilityMode) : [{}], // 默认展开一行空白（选星期即整天，或再补起止）
+    cols: [
+      { key: 'weekDays', type: 'select', multiple: true, options: WEEKDAY_OPTIONS, placeholder: '选择星期', flex: 1.5 },
+      { key: 'start', create: value => createTimePicker({ value, placeholder: '开始时间' }) },
+      { key: 'end', create: value => createTimePicker({ value, placeholder: '结束时间' }) },
+    ],
+  });
+  availabilityEditor.el.classList.add('availability-editor');
+
+  // 模式 seg（单选，不可用在前）；放在组内自己的行、不占满整行
+  const modeBar = document.createElement('div');
+  modeBar.className = 'seg availability-mode';
+  const unavailableBtn = document.createElement('button');
+  unavailableBtn.type = 'button';
+  unavailableBtn.textContent = '不可用时间';
+  const availableBtn = document.createElement('button');
+  availableBtn.type = 'button';
+  availableBtn.textContent = '可用时间';
+  const syncMode = () => {
+    unavailableBtn.classList.toggle('active', availabilityMode === 'unavailable');
+    availableBtn.classList.toggle('active', availabilityMode === 'available');
+  };
+  const collectFilled = () => availabilityEditor.collect()
+    .filter(r => r.weekDays?.length || r.start || r.end); // 忽略完全空白行
+  const renderBuf = (m) => {
+    const buf = bufOf(m);
+    availabilityEditor.setRows(buf.length ? buf : [{}]); // 该模式没有内容时给一行空白
+  };
+  const switchMode = (mode) => {
+    if (mode === availabilityMode) return; // 已是当前模式：不动作
+    bufOf(availabilityMode).splice(0, bufOf(availabilityMode).length, ...collectFilled()); // 先归档当前正在编辑的一套
+    availabilityMode = mode;
+    syncMode();
+    renderBuf(mode); // 切过去显示那套自己的内容（空的即空）
+  };
+  unavailableBtn.onclick = () => switchMode('unavailable');
+  availableBtn.onclick = () => switchMode('available');
+  modeBar.append(unavailableBtn, availableBtn);
+  syncMode();
+
+  // seg 放在标题行下方自己的行；「＋ 添加时间段」在标题行右侧（rowsEditor 统一）
+  availabilityEditor.el.querySelector('.rows-editor-head').after(modeBar);
+
   const allowedLab = allowedF.wrap.querySelector('label');
   const fillBannedBtn = makeFillBtn('可胜任之外全部设为不合适', () => {
     const allowed = new Set(allowedSel.value);
     const existing = new Set(bannedEditor.collect().map(b => b.projectId));
     const missing = projects.map(p => p.id).filter(id => !allowed.has(id) && !existing.has(id));
     if (!missing.length) {
-      showToast('不合适项目已是最全状态', 'info');
+      showToast('不合适任务已是最全状态', 'info');
       return;
     }
     missing.forEach(id => bannedEditor.add({ projectId: id, reason: '' }));
-    showToast(`已追加 ${missing.length} 个不合适项目，可逐行补充原因`, 'success');
+    showToast(`已追加 ${missing.length} 个不合适任务，可逐行补充原因`, 'success');
   });
   const allowedLabRow = document.createElement('div');
   allowedLabRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
   allowedLab.replaceWith(allowedLabRow);
   allowedLabRow.append(allowedLab, fillBannedBtn);
 
-  const bannedLab = bannedEditor.el.querySelector('label');
   const fillAllowedBtn = makeFillBtn('不合适之外全部设为可胜任', () => {
     const banned = new Set(bannedEditor.collect().map(b => b.projectId));
     const ids = projects.map(p => p.id).filter(id => !banned.has(id));
     allowedSel.value = ids;
     lastAllowed = ids;
-    showToast(`已设 ${ids.length} 个项目为可胜任`, 'success');
+    showToast(`已设 ${ids.length} 个任务为可胜任`, 'success');
   });
-  const bannedLabRow = document.createElement('div');
-  bannedLabRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
-  bannedLab.replaceWith(bannedLabRow);
-  bannedLabRow.append(bannedLab, fillAllowedBtn);
+  bannedEditor.title.append(fillAllowedBtn); // 不合适组：反选钮留在标题旁（左），＋添加在行头右侧
 
   if (!projects.length) {
     fillAllowedBtn.disabled = true;
@@ -562,7 +622,7 @@ async function editStaffDialog(staff) {
   const headPair = document.createElement('div');
   headPair.className = 'field-pair';
   headPair.append(nameF.wrap, statusF.wrap);
-  body.append(headPair, limitRow, monthRow, allowedF.wrap, bannedEditor.el, preferredEditor.el, tagsF.wrap);
+  body.append(headPair, limitRow, monthRow, allowedF.wrap, bannedEditor.el, preferredEditor.el, tagsF.wrap, availabilityEditor.el);
   const footer = document.createElement('div');
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
@@ -572,6 +632,14 @@ async function editStaffDialog(staff) {
   const modal = openModal({ title: staff ? '编辑人员' : '新增人员', body, footer });
 
   saveBtn.onclick = async () => {
+    // 过滤完全空白的行（默认展开的那一行）；选星期不写时间 = 整天
+    const filledEntries = availabilityEditor.collect()
+      .filter(e => e.weekDays?.length || e.start || e.end)
+      .map(entry => ({ ...entry, weekDays: (entry.weekDays ?? []).map(Number) }));
+    const availability = filledEntries.length ? { mode: availabilityMode, entries: filledEntries } : null;
+    // 重存前清空旧的时间安排错误标记（校验失败时下方重新加红与文案）
+    availabilityEditor.el.classList.remove('is-error');
+    availabilityEditor.el.querySelector('.field-error')?.remove();
     const draft = createStaff({
       id: target.id,
       name: nameInput.value.trim(),
@@ -579,13 +647,14 @@ async function editStaffDialog(staff) {
       restFrom: statusSel.value === 'rest' ? (target.restFrom ?? 'active') : null,
       joinedAt: target.joinedAt,
       allowedProjects: allowedSel.value,
-      preferredProjects: preferredEditor.collect(),
-      bannedProjects: bannedEditor.collect(),
+      preferredProjects: preferredEditor.collect().filter(p => p.projectId), // 滤默认空行
+      bannedProjects: bannedEditor.collect().filter(b => b.projectId),
       maxWeeklyFatigue: Number(fatigueInput.value),
       maxHeavyTaskCount: Number(heavyInput.value),
       maxMonthlyFatigue: Number(monthFatigueInput.value),
       maxMonthlyHeavyCount: Number(monthHeavyInput.value),
       tags: tagsCtrl.value,
+      availability,
     });
     // 三列表关系预检（名称级提示）：矛盾不代改，列出后由用户按顺序化解
     const relIssues = [];
@@ -613,6 +682,16 @@ async function editStaffDialog(staff) {
       setError(monthF, byField.maxMonthlyFatigue?.join('；') || '');
       setError(monthHeavyF, byField.maxMonthlyHeavyCount?.join('；') || '');
       setError(allowedF, byField.allowedProjects?.join('；') || '');
+      const availabilityError = byField.availability?.join('；') || '';
+      availabilityEditor.el.classList.toggle('is-error', !!availabilityError);
+      availabilityEditor.el.querySelector('.field-error')?.remove();
+      if (availabilityError) {
+        const err = document.createElement('div');
+        err.className = 'field-error';
+        err.textContent = availabilityError;
+        err.style.display = 'block';
+        availabilityEditor.el.appendChild(err);
+      }
       if (byField.bannedProjects) showToast(byField.bannedProjects.join('；'), 'error');
       if (byField.preferredProjects) showToast(byField.preferredProjects.join('；'), 'error');
       return;
@@ -667,10 +746,10 @@ async function renderProjects(head, scroll) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
     const slots = [...p.slots]
       .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
-      .map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">—</span>';
+      .map(s => `<span class="tag">${esc(s.label)}</span>`).join('') || '<span class="empty">未设置</span>';
     const timeRange = p.timeRange
       ? `${ICON_CLOCK} ${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`
-      : '<span class="empty">—</span>';
+      : '<span class="empty">未设置</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
     card.innerHTML = `
@@ -684,8 +763,8 @@ async function renderProjects(head, scroll) {
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
         <div class="cfg-row"><span class="k">时间段</span><span class="v">${timeRange}</span></div>
-        <div class="cfg-row"><span class="k">加分标签</span><span class="v">${(p.bonusTags ?? []).length ? p.bonusTags.map(t => `<span class="tag">${esc(t)}</span>`).join('') : '<span class="empty">—</span>'}</span></div>
-        <div class="cfg-row"><span class="k">任务说明</span><span class="v">${p.description ? `<span class="v-text" title="${esc(p.description)}">${esc(p.description)}</span>` : '<span class="empty">—</span>'}</span></div>
+        <div class="cfg-row"><span class="k">加分标签</span><span class="v">${(p.bonusTags ?? []).length ? p.bonusTags.map(t => `<span class="tag">${esc(t)}</span>`).join('') : '<span class="empty">未设置</span>'}</span></div>
+        <div class="cfg-row"><span class="k">任务说明</span><span class="v">${p.description ? `<span class="v-text" title="${esc(p.description)}">${esc(p.description)}</span>` : '<span class="empty">未设置</span>'}</span></div>
       </div>
       <div class="cfg-card-ops">
         <label class="switch-wrap">
@@ -782,12 +861,18 @@ function buildTaskViewList(projects) {
 function buildTaskViewItem(p) {
   const item = document.createElement('div');
   item.className = 'tview-item';
+  const top = document.createElement('div');
+  top.className = 'tview-top';
   const name = document.createElement('div');
   name.className = 'tview-name';
   name.textContent = p.name;
-  const meta = document.createElement('div');
-  meta.className = 'tview-meta';
-  meta.innerHTML = taskViewMetaHTML(p);
+  const side = document.createElement('div');
+  side.className = 'tview-side';
+  side.innerHTML = `${ICON_FIRE.repeat(p.fatigueScore)}<span>${p.requiredCapacity} 人</span>`;
+  top.append(name, side);
+  const time = document.createElement('div');
+  time.className = 'tview-time';
+  time.innerHTML = taskViewTimeHTML(p);
   const desc = document.createElement('div');
   desc.className = 'tview-desc';
   if (p.description && p.description.trim()) {
@@ -796,23 +881,25 @@ function buildTaskViewItem(p) {
     desc.classList.add('empty');
     desc.textContent = '未填写说明';
   }
-  item.append(name, meta, desc);
+  item.append(top, time, desc);
   return item;
 }
 
-// 元信息行：文本段与时段 chip 分离成 flex 项（间距统一），文本段内片段用「·」连接
-function taskViewMetaHTML(p) {
-  const bits = [`<span class="tv-t">${ICON_FIRE.repeat(p.fatigueScore)} ${EFFORT_WORDS[p.fatigueScore] ?? ''} · ${p.requiredCapacity} 人/班</span>`];
-  const slots = [...p.slots]
+// 时间安排行：时段 chip 段 +（· 频率 · 时间段）文本段，flex 并排（无文本段时纯时段 chips）
+function taskViewTimeHTML(p) {
+  const chips = [...p.slots]
     .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
-    .map(s => `<span class="tag">${esc(s.label)}</span>`);
-  bits.push(...slots);
-  const right = [
-    p.timeRange ? `${esc(p.timeRange.start)}–${esc(p.timeRange.end)}` : '',
-    p.weekDays.length ? `每周${[...p.weekDays].sort((a, b) => a - b).map(d => '日一二三四五六'[d]).join('、')}` : '',
-  ].filter(Boolean).join(' · ');
-  if (right) bits.push(`<span class="tv-t">${right}</span>`);
-  return bits.join('');
+    .map(s => `<span class="tag">${esc(s.label)}</span>`)
+    .join('');
+  const parts = [];
+  const days = [...p.weekDays].sort((a, b) => a - b);
+  if (days.length === 7) parts.push('每天');
+  else if (days.length) parts.push(`每周${days.map(d => '日一二三四五六'[d]).join('、')}`);
+  if (p.timeRange) parts.push(`${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`);
+  const text = parts.map(t => `<span>${t}</span>`).join('<span class="tview-ddot"> · </span>');
+  const body = chips + (chips && text ? '<span class="tview-ddot"> · </span>' : '') + text;
+  if (!body) return '';
+  return body;
 }
 
 async function editProjectDialog(project) {
@@ -834,14 +921,14 @@ async function editProjectDialog(project) {
     }),
     value: String(target.fatigueScore),
   });
-  const fatigueF = field({ label: '劳累指数', control: fatigueSel });
+  const fatigueF = field({ label: '劳累指数', help: '活累不累：1 轻松 / 2 中等 / 3 高强度。每排一次班，干活的人就累加对应分值', control: fatigueSel });
 
   const capInput = document.createElement('input');
   capInput.className = 'input';
   capInput.type = 'number';
   capInput.min = 1;
   capInput.value = target.requiredCapacity;
-  const capF = field({ label: '所需人数', control: capInput });
+  const capF = field({ label: '所需人数', help: '一个班次安排几个人', control: capInput });
 
   const daysWrap = document.createElement('div');
   daysWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
@@ -1041,7 +1128,7 @@ const SET_GROUPS = [
       { key: 'slotTaskLimit', name: '一人一时段最多任务数', min: 1,
         hint: '早 / 中 / 晚 / 自主安排四个时段各自计数：同一时段最多排 N 个任务，不同时段互不挤占（如可同时接 1 个早班 + 1 个自主安排，再接 1 个自主安排就会超限）。' },
       { key: 'warnDailyCount', name: '当天任务数预警阈值', min: 1,
-        hint: '当天班次数达到该值时：再安排此人会提示「已达预警阈值」、人员 chip 变黄。只提醒，不阻止。' },
+        hint: '某人当天已排班次数 ≥ 该值时黄灯提醒：排班卡片上他的人名标签变淡黄，再排弹提示。只提醒不阻止，能不能加由「一天最多任务数」把关。' },
     ],
   },
   {
@@ -1049,7 +1136,7 @@ const SET_GROUPS = [
     desc: '「智能排班」「一键替补」选人时按分数推荐，谁得分高谁优先。',
     items: [
       { key: 'preferredBonus', name: '擅长加分', min: 1,
-        hint: '命中此人所擅长项目时加的分（擅长名单带原因，在人员编辑弹窗维护）。分值越大，越优先用熟练的人。' },
+        hint: '命中此人所擅长任务时加的分（擅长名单带原因，在人员编辑弹窗维护）。分值越大，越优先用熟练的人。' },
       { key: 'tagBonus', name: '标签加分', min: 1,
         hint: '命中任务加分标签时每个标签加的分（命中多个标签累加）。加分标签在任务编辑弹窗维护，只能选人员已有标签。分值越大越优先用带标签的人。' },
       { key: 'balanceFactor', name: '均衡系数', min: 1,
@@ -1082,47 +1169,80 @@ const SET_GROUPS = [
   },
 ];
 
+// 节 = { h 标题, note? 脚注, formula? 公式条, items? 平铺条, grps? [{ g 小节标题, items }] }
 const RULE_SECS = [
   {
-    h: '谁能被排：一票否决',
-    note: '被拒提示区分现状措辞：已超限 / 已达上限 / 将超限。',
-    items: [
-      '不合适名单：任务在该人「不合适」中（录入带原因，如「腰伤，不宜搬重物」）',
-      '权限不足：任务不在该人「可胜任」名单中',
-      '状态不符：休假中 / 已退出永不参与（退出仅保留历史）',
-      '新入保护：新加入者不排高强度（劳累指数 3），转正后解除',
-      '超限：当天班次数、同一时段、本周劳累积分或高强度次数将超过个人上限',
-      '超限（月）：当月（自然月）劳累积分超过该人「月疲劳上限」不可再排——与周上限分工：周防单周透支、月防整月堆积',
-      '超限（月高强）：当月高强度（劳累 3）次数超过该人「月高强度上限」不可再排；填 0 = 整月不安排高强度',
-      '连任：同一任务连续 N 期（N = 系统设置「同一任务连任上限」，0 = 关闭）排到同一人后须轮换；仅当该班次无其他可排人选时允许连任保运转',
+    h: '谁不能被排：一票否决',
+    note: '符合任一条即拦下（不做打分，并给出原因）；被拒提示按当下措辞：已超限 / 已达上限 / 将超限。',
+    grps: [
+      {
+        g: '本人不能排',
+        items: [
+          '不合适：任务在本人「不合适」名单里（录入带原因，如腰伤，不宜搬重物）',
+          '没权限：任务不在本人「可胜任」名单里',
+          '休假 / 已退出：不参与排班（退出仅保留历史）',
+          '新加入：先不排高强度（劳累指数 3），转正后放开',
+        ],
+      },
+      {
+        g: '已经排太多',
+        items: [
+          '当天 / 同时段：当天班次数、或同一时段（早/中/晚/自主安排各自独立计数）班次数达到个人上限，再加就超',
+          '周：该班所在自然周（周一 ~ 周日）劳累积分或高强度次数将超个人「周上限」——周上限防单周透支',
+          '月：该班所在自然月劳累积分或高强度次数将超个人「月上限」——月上限防整月堆积；月高强度上限填 0 = 整月不排高强度',
+        ],
+      },
+      {
+        g: '时间或轮换冲突',
+        items: [
+          '每周时间安排·任务写了执行时段：当天「可用时间」盖不住任务时段、或「不可用时间」与任务时段重叠 → 拦',
+          '每周时间安排·任务没写几点（早/中/晚/自主安排）：当天整天不可用、或「可用」当天没设任何可用时段 → 拦；「可用」当天只设了部分时段 → 放行但黄字提醒',
+          '连任到顶：同一任务连排满 N 期须换人（N = 左侧「同一任务连任上限」，填 0 = 关闭）；全班再无他人可排，才破例续排保运转',
+        ],
+      },
     ],
   },
   {
-    h: '推荐给谁：打分排序',
-    formula: '总分 = 擅长加分 + 标签加分 + (团队窗口平均 − 本人窗口疲劳) × 均衡系数',
+    h: '推荐给谁：总分越高越优先',
+    formula: '总分 = 擅长加分 + 标签加分 + 均衡加分',
     items: [
-      '任务配了加分标签时，凡带命中标签的人员每个标签各加分（可多个累加）；加分标签取自全库人员已有标签',
-      '低于平均得正分 → 优先排（近期干得少的先上）；高于平均得负分 → 往后排（干得多的先歇）',
-      '窗口 = 今天回看 N 天内的已排班次（未来已排定的也算），N 即左侧「公平参考窗口」；窗口外旧账不进均衡',
-      '团队平均只统计参与状态人员；新入按平均计（不加不减），休假 / 已退出不计入',
-      '每分配一人立即刷新其窗口疲劳，后续班次实时感知——避免同一人反复填坑',
+      '擅长：任务在本人「擅长」名单里 → 加分（名单带原因，会随推荐理由显示）',
+      '加分标签：任务配了加分标签时，命中一个标签加一次分、可累加；标签取自全库人员已有标签',
+      '均衡：公平窗口内干得少的人得正分排前面、干得多的人被往后放——防止同一人反复填坑',
+      '团队平均只统计参与中的人员；新加入按平均计（不加不减），休假 / 已退出不计入',
+      '每排定一人，其窗口积分立即刷新，后续班次自动感知——后一班不会重复填同一个人',
     ],
   },
   {
     h: '疲劳与高强度怎么累计',
-    items: [
-      '劳累指数 = 任务自带的辛苦分：1 轻松 / 2 中等 / 3 高强度',
-      '本周劳累积分 = 该班次所在自然周（周一 ~ 周日，滚动窗口）已排班次的劳累指数之和，超过个人「周疲劳上限」即超限——上周干得多不影响本周判定',
-      '月疲劳积分 = 该班次所在自然月（YYYY-MM，非滚动窗口）已排班次的劳累指数之和，超过个人「月疲劳上限」即超限——月初/月末相邻两天分属两月，会有月底卡死、月初重置的边界表现',
-      '高强度次数 = 该班次所在周内排过的 3 分班次数，受个人「周高强度次数上限」约束（同滚动周）；月高强度次数 = 该自然月内排过的 3 分班次数，受个人「月高强度次数上限」约束（同自然月）',
-      '连任按"期"计：同一任务在有排班的自然周里连续排到同一人的期数；任务某周没排（空窗）不算中断，换人接手才清零',
-      '「周/月上限」是透支保护（周滚动、月固定自然月）；「公平参考窗口」是长期轮换标尺；「连任上限」是同任务轮换纪律——三者分工互不干扰',
+    note: '周 / 月上限是「透支保护」，公平窗口管长期轮换，连任上限管同任务轮换——三者分工、互不干扰。',
+    grps: [
+      {
+        g: '劳累指数（任务的辛苦分）',
+        items: ['1 轻松 / 2 中等 / 3 高强度——它累出下面的周/月积分与高强度次数'],
+      },
+      {
+        g: '周与月：各算各的',
+        items: [
+          '周（自然周，周一 ~ 周日，随周滚动）：周内已排班次劳累指数之和，对比「周疲劳上限」——上周干得多不影响本周',
+          '月（自然月，固定整月）：月内已排班次劳累指数之和，对比「月疲劳上限」——相邻两天跨月，会分别记进各自月',
+          '高强度次数同口径：周内 3 分班次对比「周高强度上限」、月内 3 分班次对比「月高强度上限」',
+        ],
+      },
+      {
+        g: '连任与公平窗口',
+        items: [
+          '连任期数：同一任务有排班的自然周里连续排到同一人的期数；某周空窗不清零，换人接手才清零',
+          '公平窗口（均衡用）：今天回看 N 天（默认 30）内的已排班次、含已排定的未来班；窗口随日滑出旧账，谁的旧账退出即不再参与均衡',
+        ],
+      },
     ],
   },
   {
-    h: '预警亮灯时机',
+    h: '黄灯提醒（只提示，不拦人）',
     items: [
-      '当天班次数达到「当天任务数预警阈值」时：再安排此人会弹出提示、人员 chip 变黄——只提醒，不阻止',
+      '某人当天已排班次数 ≥「当天任务数预警阈值」→ 排班卡片上他的人名标签变淡黄，再排到他时弹一条「已达预警」提示',
+      '这一档只提醒：真加不进去要看第①节的「一天最多任务数」等上限——到上限才会拦',
     ],
   },
 ];
@@ -1259,13 +1379,26 @@ function renderSettings(head, scroll) {
       fm.textContent = sec.formula;
       box.appendChild(fm);
     }
-    const ul = document.createElement('ul');
-    sec.items.forEach(t => {
-      const li = document.createElement('li');
-      li.textContent = t;
-      ul.appendChild(li);
-    });
-    box.appendChild(ul);
+    const makeList = (list, items) => {
+      const ul = document.createElement('ul');
+      items.forEach(t => {
+        const li = document.createElement('li');
+        li.textContent = t;
+        ul.appendChild(li);
+      });
+      list.appendChild(ul);
+    };
+    if (sec.grps) {
+      sec.grps.forEach(grp => {
+        const gh = document.createElement('h5');
+        gh.className = 'set-rule-grp';
+        gh.textContent = grp.g;
+        box.appendChild(gh);
+        makeList(box, grp.items);
+      });
+    } else if (sec.items) {
+      makeList(box, sec.items);
+    }
     if (sec.note) {
       const nt = document.createElement('div');
       nt.className = 'set-rule-note';

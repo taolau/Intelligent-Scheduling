@@ -1,5 +1,5 @@
 import { expandWeeks, previewExpand } from '../core/expand.js';
-import { filterCandidate } from '../core/filter.js';
+import { filterCandidate, checkAvailability } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx, splitEligible } from '../core/substitute.js';
 import { simulateAutoFill, accumulateDelta } from '../core/auto.js';
@@ -10,7 +10,7 @@ import { createSchedule, SLOT_LABELS, monthlyFatigueLimitOf, monthlyHeavyLimitOf
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { showToast } from '../ui/toast.js';
 import { enableDrag, enableDrop } from '../ui/dnd.js';
-import { exportScheduleImage } from '../ui/exportImage.js';
+import { exportScheduleImage, exportTaskViewImage } from '../ui/exportImage.js';
 import { createSelect } from '../ui/select.js';
 import { field, setError } from '../ui/fields.js';
 import { ICON_FIRE } from '../ui/icons.js';
@@ -64,6 +64,7 @@ const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_IMAGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M5 21V4"/><path d="M5 4h12l-3 5 3 5H5"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
+const ICON_DAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:block"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 
 export async function renderCalendar(container, opts = {}) {
   // 批量删除多选态：任何外部触发/重渲染自动退出（本态进入/退出自渲染走 opts.keepBatch）
@@ -207,13 +208,7 @@ export async function renderCalendar(container, opts = {}) {
       showToast('当前视图暂无班次，无可导出的排班图', 'error');
       return;
     }
-    const viewLabel = viewMode === 'overview' ? '总览'
-      : viewMode === 'project' ? `任务：${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
-      : `人员：${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
-    const scope = viewMode === 'overview' ? '总览'
-      : viewMode === 'project' ? `项目·${data.projects.find(p => p.id === viewTargetId)?.name ?? ''}`
-      : `人员·${data.staffs.find(s => s.id === viewTargetId)?.name ?? ''}`;
-    const cleanName = s => s.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+    const { label: viewLabel, scope } = viewLabels();
     const title = isMonth
       ? `${Number(monthAnchor.slice(0, 4))} 年 ${Number(monthAnchor.slice(5))} 月`
       : getWeekLabel(currentWeekStart);
@@ -257,6 +252,22 @@ function gotoNow() {
   if (timeScale === 'week') currentWeekStart = getWeekStart(todayStr());
   else monthAnchor = todayStr().slice(0, 7);
   renderCalendar(document.querySelector('#view'));
+}
+
+// 维度展示文案（工具栏导出/当日弹窗共用）：label = 人话副题，scope = 导出文件名段
+function viewLabels() {
+  if (viewMode === 'overview') return { label: '总览', scope: '总览' };
+  const isProj = viewMode === 'project';
+  const name = isProj
+    ? data.projects.find(p => p.id === viewTargetId)?.name
+    : data.staffs.find(s => s.id === viewTargetId)?.name;
+  return isProj
+    ? { label: `任务：${name ?? ''}`, scope: `项目·${name ?? ''}` }
+    : { label: `人员：${name ?? ''}`, scope: `人员·${name ?? ''}` };
+}
+
+function cleanName(s) {
+  return s.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
 }
 
 // 内容渲染：周 = 单面板；月 = 覆盖整月的完整自然周面板纵向堆叠
@@ -365,6 +376,16 @@ function buildGridPanel(host, weekStart, panelScheds, readOnly, outSet) {
       addBtn.onclick = () => manualCreate(d, null, viewMode === 'project' ? viewTargetId : null);
       head.appendChild(addBtn);
     }
+
+    // 当日排班弹窗入口：所有维度可用（人员只读维度无建班次钮时贴右缘）；灰显邻月日同样可看
+    const dayBtn = document.createElement('button');
+    dayBtn.type = 'button';
+    dayBtn.className = 'cal-day-btn';
+    dayBtn.title = '当日排班 · 查看并导出图片';
+    dayBtn.innerHTML = ICON_DAY;
+    dayBtn.onclick = () => openDayDialog(d);
+    head.appendChild(dayBtn);
+
     col.appendChild(head);
 
     let dayHasCard = false;
@@ -394,6 +415,141 @@ function buildGridPanel(host, weekStart, panelScheds, readOnly, outSet) {
   });
   host.appendChild(grid);
   return grid;
+}
+
+// 当日排班弹窗（日期列头日历钮入口）：只读当日清单按时段分组 + 导出图片。
+// 口径跟随当前维度（总览 = 当天全部 / 项目 = 该任务 / 人员 = 该人），人员只读维度同样可进
+function openDayDialog(date) {
+  const staffById = Object.fromEntries(data.staffs.map(s => [s.id, s]));
+  const projectById = Object.fromEntries(data.projects.map(p => [p.id, p]));
+  let dayScheds = data.schedules.filter(s => s.date === date);
+  if (viewMode === 'project') dayScheds = dayScheds.filter(s => s.projectId === viewTargetId);
+  if (viewMode === 'staff') dayScheds = dayScheds.filter(s => s.staffIds.includes(viewTargetId));
+  const [y, m, d] = date.split('-').map(Number);
+  const title = `${y} 年 ${m} 月 ${d} 日 · ${weekdayLabel(date)}`;
+
+  const body = document.createElement('div');
+  const list = document.createElement('div');
+  list.className = 'day-list';
+  if (dayScheds.length) {
+    // 组序 = 预置时段序（自主安排置顶，同周历行序/替换弹窗）；组内班次横排成行：
+    // 任务配了 timeRange 按开始时间升序，未配时间的殿后（无定序基准，保持原数据序）
+    SLOT_LABELS.forEach(slotLabel => {
+      const scheds = dayScheds
+        .filter(s => s.slotLabel === slotLabel)
+        .sort((a, b) => {
+          const ta = projectById[a.projectId]?.timeRange?.start;
+          const tb = projectById[b.projectId]?.timeRange?.start;
+          if (ta && tb) return ta < tb ? -1 : ta > tb ? 1 : 0;
+          return ta ? -1 : tb ? 1 : 0;
+        });
+      if (!scheds.length) return;
+      const group = document.createElement('div');
+      group.className = 'day-group';
+      const head = document.createElement('div');
+      head.className = 'day-group-head';
+      const chip = document.createElement('span');
+      chip.className = 'day-head-tag';
+      chip.textContent = slotLabel;
+      const line = document.createElement('span');
+      line.className = 'day-group-line';
+      head.append(chip, line);
+      const cards = document.createElement('div');
+      cards.className = 'day-group-cards';
+      if (scheds.length === 1) cards.classList.add('single'); // 单卡不拉满整行
+      for (const sch of scheds) cards.appendChild(buildDayItem(sch, projectById, staffById));
+      group.append(head, cards);
+      list.appendChild(group);
+    });
+    body.appendChild(list);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'grid-empty';
+    empty.textContent = `${m} 月 ${d} 日当天暂无班次`;
+    body.appendChild(empty);
+  }
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'btn btn-soft';
+  exportBtn.innerHTML = `${ICON_IMAGE}<span>导出图片</span>`;
+  exportBtn.disabled = dayScheds.length === 0;
+  if (exportBtn.disabled) exportBtn.title = '当天暂无班次，无可导出';
+  const { label: dimLabel, scope } = viewLabels();
+  exportBtn.onclick = async () => {
+    exportBtn.disabled = true;
+    showToast('正在生成图片…');
+    try {
+      await exportTaskViewImage({
+        list,
+        title,
+        metaText: dimLabel,
+        filename: `Numbers-排班图-日-${cleanName(scope)}-${date}.png`,
+      });
+      showToast('当日排班图已导出', 'success');
+    } catch (e) {
+      showToast(`导出失败：${e.message}`, 'error');
+    } finally {
+      exportBtn.disabled = dayScheds.length === 0;
+    }
+  };
+  openModal({ title, body, footer: exportBtn, boxClass: 'box-day' });
+}
+
+// 当日班次卡：任务名(+劳累指数火焰徽章) +（时间段 · 人名 / 暂未分配）+（任务说明），执行信息主次，屏幕与导出同构
+function buildDayItem(sch, projectById, staffById) {
+  const p = projectById[sch.projectId];
+  const item = document.createElement('div');
+  item.className = 'day-item';
+  const top = document.createElement('div');
+  top.className = 'day-item-top';
+  const name = document.createElement('div');
+  name.className = 'day-item-name';
+  name.textContent = p ? p.name : sch.projectId;
+  top.appendChild(name);
+  if (p) {
+    const fire = document.createElement('span');
+    fire.className = 'day-fire';
+    fire.title = `劳累指数 ${p.fatigueScore}/3`;
+    fire.innerHTML = ICON_FIRE.repeat(p.fatigueScore);
+    top.appendChild(fire);
+  }
+  item.appendChild(top);
+
+  const meta = document.createElement('div');
+  meta.className = 'day-item-meta';
+  const parts = [];
+  if (p?.timeRange) {
+    const t = document.createElement('span');
+    t.className = 'time';
+    t.textContent = `${p.timeRange.start}–${p.timeRange.end}`;
+    parts.push(t);
+  }
+  const names = sch.staffIds.map(id => staffById[id]?.name ?? id);
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = names.length ? names.join('、') : '暂未分配';
+  if (names.length) nameSpan.className = 'names';
+  parts.push(nameSpan);
+  parts.forEach((part, i) => {
+    if (i > 0) {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.textContent = '·';
+      meta.appendChild(dot);
+    }
+    meta.appendChild(part);
+  });
+  if (!names.length) meta.classList.add('empty'); // 无人排班 = 未定，灰字弱化（时段/时间段信息仍在）
+  item.appendChild(meta);
+
+  const descText = p?.description?.trim();
+  if (descText) {
+    const desc = document.createElement('div');
+    desc.className = 'day-item-desc';
+    desc.textContent = descText;
+    item.appendChild(desc);
+  }
+  return item;
 }
 
 function buildDimSummary(visible) {
@@ -858,6 +1014,13 @@ function scheduleDialog(sch) {
             re.textContent = reco.join('；');
             row.appendChild(re);
           }
+          // 放行但需提醒（可用日仅设时段 + 任务未填时间）：黄字提示，不阻断点选
+          if (res.warnings?.length) {
+            const wa = document.createElement('span');
+            wa.className = 'assign-warn';
+            wa.textContent = res.warnings.join('；');
+            row.appendChild(wa);
+          }
           availEntries.push({ staff: s, row, info, scoreEl });
         } else {
           const why = document.createElement('span');
@@ -1078,6 +1241,21 @@ function smartPlanDialog() {
   const changed = results.filter(r => r.added.length > 0);
   const scopeName = viewMode === 'project' ? (data.projects.find(p => p.id === viewTargetId)?.name ?? '') : '';
 
+  // 黄字提醒：自动选中者属「可用日只设了时段 + 任务无具体时间」→ 仍会填，但预览需黄字提示（不阻断）
+  const staffName = id => data.staffs.find(s => s.id === id)?.name ?? id;
+  const availWarnRows = [];
+  for (const r of results) {
+    if (!r.added.length) continue;
+    const proj = projectById[r.sch.projectId];
+    const warned = r.added.filter(id => {
+      const st = data.staffs.find(x => x.id === id);
+      return !!st && checkAvailability(st, r.sch, proj).warn;
+    });
+    if (warned.length) availWarnRows.push({
+      date: r.sch.date, slot: r.sch.slotLabel, name: proj?.name ?? r.sch.projectId, names: warned.map(staffName),
+    });
+  }
+
   // 范围行（与批量铺排同构）
   const starts = isMonth ? weeksCovering(monthAnchor) : [currentWeekStart];
   const spanEnd = starts.length === 1 ? getWeekLabel(starts[0])
@@ -1148,6 +1326,32 @@ function smartPlanDialog() {
       list.appendChild(row);
     }
     body.appendChild(list);
+
+    // 黄字提醒区：可用日仅部分时段 + 无具体时间任务的被选者（仍会安排，预览先行告知）
+    if (availWarnRows.length) {
+      const warnBox = document.createElement('div');
+      warnBox.className = 'smart-warnbox';
+      const wTitle = document.createElement('div');
+      wTitle.className = 'smart-warn-title';
+      wTitle.textContent = '提醒：班次没写具体时间，排到的人员当天仅在部分时段可排';
+      warnBox.appendChild(wTitle);
+      for (const row of availWarnRows) {
+        const wr = document.createElement('div');
+        wr.className = 'smart-warn';
+        const dt = document.createElement('span');
+        dt.className = 'smart-warn-date';
+        dt.textContent = `${weekdayLabel(row.date)} · ${row.date.slice(5)}`;
+        const slot = document.createElement('span');
+        slot.className = 'smart-slot';
+        slot.textContent = row.slot;
+        const nm = document.createElement('span');
+        nm.className = 'smart-warn-name';
+        nm.textContent = `${row.name} → ${row.names.join('、')}`;
+        wr.append(dt, slot, nm);
+        warnBox.appendChild(wr);
+      }
+      body.appendChild(warnBox);
+    }
 
     // 缺口班次明细：填不满的逐条单列，确认前可见「需人工收尾」的全貌
     if (gaps.length > 0) {
@@ -1369,6 +1573,12 @@ function openReplaceDialog(staff, sch) {
           why.className = 'rpl-cand-why';
           why.textContent = r.reasons.join('；');
           card.appendChild(why);
+        }
+        if (r.warning) {
+          const wa = document.createElement('div');
+          wa.className = 'rpl-cand-warn';
+          wa.textContent = r.warning;
+          card.appendChild(wa);
         }
         async function doReplace() {
           // 一减一增：移除被替换者计数、累加替补者计数，ctx 同步防算法层计数错乱

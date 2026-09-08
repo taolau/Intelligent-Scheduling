@@ -11,7 +11,7 @@ Intelligent-Scheduling/
   package.json        # scripts: dev(vite) / build(esbuild单文件) / test(node:test)
   build.js            # 打包脚本 → dist/index.html（开发多模块,发布单文件）
   dist/               # 构建产物（gitignore,仅 index.html）
-  docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则；score-rules.md = 排班推荐分数规则人话手册，spec 4.x 为真源）
+  docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则；score-rules.md = 排班推荐分数规则人话手册，spec 4.x 为真源；脚本/ = 测试数据播种脚本，DevTools Console 粘贴执行、日期相对今天，含全面版与锚点清单）
   test/               # node:test 单测（算法层+模型+数据层 db/store）
 ```
 
@@ -25,7 +25,7 @@ Intelligent-Scheduling/
 | | `store.js` | 增量缓存门面（saveXxx/removeXxx 增量更新 cache；loadAll 仅初始化/导入/重置；JSON备份/恢复；getSettings/saveSettings） | db/keys |
 | `core/` | `week.js` | 周/日期/时间/月工具（纯函数；月首/月标签/`YYYY-MM` 键、中心日换算） | 无 |
 | | `expand.js` | 按 weekDays+slots 展开班次；`expandWeeks` 批量展开连续 N 周 | week |
-| | `filter.js` | 硬性过滤（一票否决，返回原因；周上限滚动窗口 + 月上限自然月 + 连任轮换，均三分文案；返回 tenureOnly 豁免标记） | week/tenure |
+| | `filter.js` | 硬性过滤（一票否决，返回原因；周上限滚动窗口 + 月上限自然月 + 连任轮换，均三分文案；返回 tenureOnly 豁免标记）；**另导出 `checkAvailability`**（人员每周时间安排判定：{block,warn}，供 filterCandidate + 分配/替换黄字 + 智能排班预览黄字复用） | week/tenure |
 | | `score.js` | 打分（擅长 + 标签加分 + 移动窗口均衡，返回得分构成；标签加分 = 任务 bonusTags ∩ 人员 tags 每命中一标签 × tagBonus） | week |
 | | `tenure.js` | 同任务连任判定纯函数（tenureRunAfterAdd：加入后连续占有段长；段轴 = 任务"有发生周"，空窗不中断/他人中断/未来计入） | 无 |
 | | `substitute.js` | buildContext 上下文聚合（窗口/自然周/自然月计数 + projectWeeks/tenure/heavyByMonth 连任与月高强轨道）+ cloneCtx 深拷贝 + splitEligible 候选分池（连任豁免）+ 替补 Top3 推荐 | filter/score/week |
@@ -35,7 +35,7 @@ Intelligent-Scheduling/
 | | `analysis.js` | 疲劳分析柱状图（canvas） | core+data |
 | `ui/` | `theme.js` | 设计令牌 tokens + 全局样式注入（按钮/表单/弹窗/表格/toast/周历类/卡片网格/开关）；**侧边栏样式与 index.html 首屏内联段同步维护** | 无 |
 | | `icons.js` | 共享 SVG 图标常量（ICON_FIRE 劳累指数火焰等） | 无 |
-| | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行 + **tagsInput() 标签 chip 输入**（同框可输可选：聚焦浮出已有标签候选、回车自创、去重；`allowCreate:false` = 只选不建不自创，供任务加分标签） | select |
+| | `fields.js` | 表单构建：field()/setError()/rowsEditor() 结构化动态行（列可配 `multiple` 多选、`create()` 自定义控件工厂、行变更回调 `onRowsChange`，供每周时间安排嵌时间选择器）+ **tagsInput() 标签 chip 输入**（同框可输可选：聚焦浮出已有标签候选、回车自创、去重；`allowCreate:false` = 只选不建不自创，供任务加分标签） | select |
 | | `select.js` | 自定义下拉：createSelect 单选/多选统一组件（`searchable` 可搜索过滤），el.value 兼容原生 select 读取；面板 fixed 视口定位防弹窗裁剪 | theme |
 | | `timepicker.js` | 时间选择器：createTimePicker 点击整个框弹时/分双列面板（小时 00-23、分钟 00-59，选分钟自动收起），el.value 返回 'HH:mm' 或 '' | theme |
 | | `modal.js` | 弹窗（openModal 单点收口：遮罩点击不关、ESC/右上 X 关；**弹窗栈**嵌套 ESC 只关顶层；footer 惯例=次钮左/主钮右；**confirmDialog** 破坏性操作二次确认弹窗，box-confirm 窄宽） | theme |
