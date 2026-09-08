@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
-         validateProject, validateStaff, reconcileStaff, parseTags, formatTags,
+         validateProject, validateStaff, reconcileStaff, parseTags, formatTags, availabilityProblem,
          SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../src/data/model.js';
 
 test('createProject 带默认值', () => {
@@ -289,4 +289,56 @@ test('monthlyHeavyLimitOf：显式优先，缺省回设置默认', () => {
   assert.equal(monthlyHeavyLimitOf({ maxMonthlyHeavyCount: 3 }), 3);
   assert.equal(monthlyHeavyLimitOf({}), 8);
   assert.equal(monthlyHeavyLimitOf({}, { defaultMonthlyHeavyCount: 5 }), 5);
+});
+
+// —— 每周时间安排 availability（3.2）——
+
+test('createStaff 默认 availability 为 null（不限制）', () => {
+  const s = createStaff({ name: '张三' });
+  assert.equal(s.availability, null);
+});
+
+test('createStaff 保留传入 availability', () => {
+  const s = createStaff({ name: '张三', availability: { mode: 'available', entries: [{ weekDays: [1, 3], start: '09:00', end: '12:00' }] } });
+  assert.deepEqual(s.availability.entries[0].weekDays, [1, 3]);
+});
+
+test('availabilityProblem: null/合法 均无错误', () => {
+  assert.equal(availabilityProblem(null), '');
+  assert.equal(availabilityProblem(undefined), '');
+  assert.equal(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1, 5], start: '09:00', end: '12:00' }, { weekDays: [2], start: '14:00', end: '18:00' }] }), '');
+  assert.equal(availabilityProblem({ mode: 'unavailable', entries: [{ weekDays: [0], start: '00:00', end: '23:59' }] }), '');
+});
+
+test('availabilityProblem: 模式非法 / 空 entries 拒绝', () => {
+  assert.ok(availabilityProblem({ mode: 'x', entries: [{ weekDays: [1], start: '09:00', end: '10:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [] }));
+  assert.ok(availabilityProblem({ mode: 'available' }));
+});
+
+test('availabilityProblem: 空/越界/重复 星期拒绝', () => {
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [], start: '09:00', end: '10:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [7], start: '09:00', end: '10:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1.5], start: '09:00', end: '10:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1, 1], start: '09:00', end: '10:00' }] }));
+});
+
+test('availabilityProblem: 非法时间 / 跨日 / 倒挂 / 相等 拒绝', () => {
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1], start: '9:00', end: '10:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1], start: '09:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1], start: '22:00', end: '02:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1], start: '10:00', end: '09:00' }] }));
+  assert.ok(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1], start: '09:00', end: '09:00' }] }));
+});
+
+test('availabilityProblem: 只选星期不写时间 = 全天，合法', () => {
+  assert.equal(availabilityProblem({ mode: 'unavailable', entries: [{ weekDays: [1, 5] }] }), '');
+  assert.equal(availabilityProblem({ mode: 'available', entries: [{ weekDays: [1] }, { weekDays: [3], start: '09:00', end: '12:00' }] }), '');
+});
+
+test('validateStaff: availability 非法时报错', () => {
+  const s = createStaff({ name: '张三', availability: { mode: 'available', entries: [{ weekDays: [1], start: '10:00', end: '09:00' }] } });
+  const r = validateStaff(s);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'availability'));
 });

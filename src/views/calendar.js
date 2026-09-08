@@ -1,5 +1,5 @@
 import { expandWeeks, previewExpand } from '../core/expand.js';
-import { filterCandidate } from '../core/filter.js';
+import { filterCandidate, checkAvailability } from '../core/filter.js';
 import { scoreCandidate } from '../core/score.js';
 import { buildContext, recommendSubstitutes, narrateReasons, cloneCtx, splitEligible } from '../core/substitute.js';
 import { simulateAutoFill, accumulateDelta } from '../core/auto.js';
@@ -1014,6 +1014,13 @@ function scheduleDialog(sch) {
             re.textContent = reco.join('；');
             row.appendChild(re);
           }
+          // 放行但需提醒（可用日仅设时段 + 任务未填时间）：黄字提示，不阻断点选
+          if (res.warnings?.length) {
+            const wa = document.createElement('span');
+            wa.className = 'assign-warn';
+            wa.textContent = res.warnings.join('；');
+            row.appendChild(wa);
+          }
           availEntries.push({ staff: s, row, info, scoreEl });
         } else {
           const why = document.createElement('span');
@@ -1234,6 +1241,21 @@ function smartPlanDialog() {
   const changed = results.filter(r => r.added.length > 0);
   const scopeName = viewMode === 'project' ? (data.projects.find(p => p.id === viewTargetId)?.name ?? '') : '';
 
+  // 黄字提醒：自动选中者属「可用日只设了时段 + 任务无具体时间」→ 仍会填，但预览需黄字提示（不阻断）
+  const staffName = id => data.staffs.find(s => s.id === id)?.name ?? id;
+  const availWarnRows = [];
+  for (const r of results) {
+    if (!r.added.length) continue;
+    const proj = projectById[r.sch.projectId];
+    const warned = r.added.filter(id => {
+      const st = data.staffs.find(x => x.id === id);
+      return !!st && checkAvailability(st, r.sch, proj).warn;
+    });
+    if (warned.length) availWarnRows.push({
+      date: r.sch.date, slot: r.sch.slotLabel, name: proj?.name ?? r.sch.projectId, names: warned.map(staffName),
+    });
+  }
+
   // 范围行（与批量铺排同构）
   const starts = isMonth ? weeksCovering(monthAnchor) : [currentWeekStart];
   const spanEnd = starts.length === 1 ? getWeekLabel(starts[0])
@@ -1304,6 +1326,32 @@ function smartPlanDialog() {
       list.appendChild(row);
     }
     body.appendChild(list);
+
+    // 黄字提醒区：可用日仅部分时段 + 无具体时间任务的被选者（仍会安排，预览先行告知）
+    if (availWarnRows.length) {
+      const warnBox = document.createElement('div');
+      warnBox.className = 'smart-warnbox';
+      const wTitle = document.createElement('div');
+      wTitle.className = 'smart-warn-title';
+      wTitle.textContent = '提醒：班次没写具体时间，排到的人员当天仅在部分时段可排';
+      warnBox.appendChild(wTitle);
+      for (const row of availWarnRows) {
+        const wr = document.createElement('div');
+        wr.className = 'smart-warn';
+        const dt = document.createElement('span');
+        dt.className = 'smart-warn-date';
+        dt.textContent = `${weekdayLabel(row.date)} · ${row.date.slice(5)}`;
+        const slot = document.createElement('span');
+        slot.className = 'smart-slot';
+        slot.textContent = row.slot;
+        const nm = document.createElement('span');
+        nm.className = 'smart-warn-name';
+        nm.textContent = `${row.name} → ${row.names.join('、')}`;
+        wr.append(dt, slot, nm);
+        warnBox.appendChild(wr);
+      }
+      body.appendChild(warnBox);
+    }
 
     // 缺口班次明细：填不满的逐条单列，确认前可见「需人工收尾」的全貌
     if (gaps.length > 0) {
@@ -1525,6 +1573,12 @@ function openReplaceDialog(staff, sch) {
           why.className = 'rpl-cand-why';
           why.textContent = r.reasons.join('；');
           card.appendChild(why);
+        }
+        if (r.warning) {
+          const wa = document.createElement('div');
+          wa.className = 'rpl-cand-warn';
+          wa.textContent = r.warning;
+          card.appendChild(wa);
         }
         async function doReplace() {
           // 一减一增：移除被替换者计数、累加替补者计数，ctx 同步防算法层计数错乱

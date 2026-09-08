@@ -100,6 +100,20 @@ test('recommendSubstitutes: 无人可用时返回空', () => {
   assert.equal(result.length, 0);
 });
 
+test('recommendSubstitutes: 时间安排不可用者被排除（availability 硬过滤贯通）', () => {
+  const P101T = createProject({ id: 'P101', name: '搬运', fatigueScore: 2, slots: [{ label: '上午' }], timeRange: { start: '10:00', end: '12:00' } });
+  const byIdT = { P101: P101T };
+  const staffs = [
+    createStaff({ id: 'S1', name: '被替换人', allowedProjects: ['P101'] }),
+    createStaff({ id: 'S2', name: '甲', allowedProjects: ['P101'], availability: { mode: 'available', entries: [{ weekDays: [2], start: '09:00', end: '12:00' }] } }), // 仅周二，而 schedule 为周一
+    createStaff({ id: 'S3', name: '乙', allowedProjects: ['P101'] }),
+  ];
+  const ctx = buildContext(staffs, [schedule], byIdT, undefined, TODAY); // schedule date 2026-08-24 周一
+  const result = recommendSubstitutes(staffs, schedule, byIdT, ctx, 'S1');
+  assert.ok(result.every(r => r.staff.id !== 'S2'));
+  assert.deepEqual(result.map(r => r.staff.id), ['S3']);
+});
+
 // —— 理由人话化（narrateReasons）分支 ——
 const P101Narrate = { P101: { id: 'P101', name: '搬运' } };
 const schNarrate = { date: '2026-08-24', projectId: 'P101', slotLabel: '上午' };

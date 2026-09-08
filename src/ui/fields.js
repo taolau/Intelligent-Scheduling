@@ -272,31 +272,47 @@ export function tagsInput({ initial = [], options = [], allowCreate = true, plac
   return box;
 }
 
-export function rowsEditor({ label, help, addLabel, cols, initial = [], onCell }) {
+export function rowsEditor({ label, help, addLabel, cols, initial = [], onCell, onRowsChange }) {
   const box = document.createElement('div');
-  box.className = 'field';
+  box.className = 'field rows-editor';
+  // 统一头部：标题区（标题＋ⓘ 及组内 seg/反选钮由调用方注入 title）在左，右侧操作钮区（＋添加）在右
+  const head = document.createElement('div');
+  head.className = 'rows-editor-head';
+  const title = document.createElement('div');
+  title.className = 'rows-editor-title';
   const lab = document.createElement('label');
   lab.textContent = label;
   if (help) {
     lab.classList.add('with-help');
     lab.appendChild(attachHelp(help));
   }
+  title.appendChild(lab);
+  const actions = document.createElement('div');
+  actions.className = 'rows-editor-actions';
+  head.append(title, actions);
   const rows = document.createElement('div');
+  rows.className = 'rows-editor-rows';
   rows.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const add = document.createElement('button');
   add.type = 'button';
-  add.className = 'btn btn-default btn-sm';
+  add.className = 'btn btn-default btn-sm rows-editor-add';
   add.textContent = addLabel;
-  add.onclick = () => rows.appendChild(buildRow({}));
-  box.append(lab, rows, add);
+  add.onclick = () => {
+    rows.appendChild(buildRow({}));
+    onRowsChange?.();
+  };
+  actions.appendChild(add);
+  box.append(head, rows);
 
   function buildRow(data) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:8px;align-items:center;';
     for (const col of cols) {
       let el;
-      if (col.type === 'select') {
-        el = createSelect({ options: col.options, value: data[col.key] });
+      if (col.create) {
+        el = col.create(data[col.key], data);
+      } else if (col.type === 'select') {
+        el = createSelect({ options: col.options, value: data[col.key], multiple: col.multiple, placeholder: col.placeholder });
       } else {
         el = document.createElement('input');
         el.className = 'input';
@@ -304,8 +320,9 @@ export function rowsEditor({ label, help, addLabel, cols, initial = [], onCell }
         el.placeholder = col.placeholder ?? '';
         el.value = data[col.key] ?? '';
       }
-      el.style.flex = '1';
+      el.style.flex = String(col.flex ?? 1);
       row.appendChild(el);
+      el.addEventListener('change', () => onRowsChange?.());
       if (onCell) onCell(col.key, el, row);
     }
     const del = document.createElement('button');
@@ -313,7 +330,10 @@ export function rowsEditor({ label, help, addLabel, cols, initial = [], onCell }
     del.className = 'btn btn-ghost btn-sm row-del';
     del.title = '删除此行';
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;display:block"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-    del.onclick = () => row.remove();
+    del.onclick = () => {
+      row.remove();
+      onRowsChange?.();
+    };
     row.appendChild(del);
     return row;
   }
@@ -322,8 +342,18 @@ export function rowsEditor({ label, help, addLabel, cols, initial = [], onCell }
 
   return {
     el: box,
+    label: lab,
+    title,
+    actions,
     add(data) {
       rows.appendChild(buildRow(data));
+      onRowsChange?.();
+    },
+    // 整组替换（供「可用/不可用」双缓冲切换时重建行）
+    setRows(list = []) {
+      while (rows.firstChild) rows.removeChild(rows.firstChild);
+      list.forEach(d => rows.appendChild(buildRow(d)));
+      onRowsChange?.();
     },
     collect() {
       const out = [];

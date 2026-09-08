@@ -18,21 +18,23 @@ const PROJECT_BASE_COLS = [
 const STAFF_BASE_COLS = [
   '姓名(必填)',
   '状态(选填;新入/活跃/休假/已退出,默认活跃)',
-  '可胜任项目(必填;分号隔开)',
-  '擅长项目(选填;项目(原因),分号隔开)',
-  '不合适项目(选填;项目(原因),分号隔开)',
+  '可胜任任务(必填;分号隔开)',
+  '擅长任务(选填;任务(原因),分号隔开)',
+  '不合适任务(选填;任务(原因),分号隔开)',
   '周疲劳上限(选填)',
   '高强度次数上限(选填)',
   '月疲劳上限(选填)',
   '月高强度次数上限(选填)',
   '标签(选填;分号隔开,可多个)',
+  '每周时间模式(选填;可用/不可用)',
+  '每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)',
 ];
 const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
 const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
 const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '组长', '1'];
-const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '40', '8', '组长;值班'];
+const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '40', '8', '组长;值班', '可用', '周一、周三、周五 09:00-12:00;周日 14:00-18:00'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
 const STATUS_REV = { new: '新入', active: '活跃', rest: '休假', left: '已退出' };
@@ -93,6 +95,49 @@ function parseTimeRange(start, end) {
   return isValidTimeRange({ start: s, end: e }) ? { start: s, end: e } : null;
 }
 
+const AVAILABILITY_MODE_ALIAS = { '可用': 'available', available: 'available', '不可用': 'unavailable', unavailable: 'unavailable' };
+const AVAILABILITY_MODE_REV = { available: '可用', unavailable: '不可用' };
+const WEEKDAY_ALIAS = { '周一': 1, '周二': 2, '周三': 3, '周四': 4, '周五': 5, '周六': 6, '周日': 0 };
+
+export function formatAvailability(availability) {
+  if (!availability?.entries?.length) return { mode: '', entries: '' };
+  const entries = availability.entries.map(entry => {
+    const days = (entry.weekDays ?? []).map(day => ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][day]).join('、');
+    const times = (entry.start && entry.end) ? `${entry.start}-${entry.end}` : '全天';
+    return `${days} ${times}`;
+  }).join(';');
+  return { mode: AVAILABILITY_MODE_REV[availability.mode] ?? '', entries };
+}
+
+export function parseAvailability(modeValue, entriesValue) {
+  const modeText = toHalf(modeValue).trim();
+  // 仅规整冒号/分号/连字符（保留「、」星期分隔与中文逗号），避免把分隔符误归一
+  const entriesText = String(entriesValue ?? '')
+    .replace(/[；]/g, ';').replace(/[：]/g, ':').replace(/[－–—]/g, '-').trim();
+  if (!modeText && !entriesText) return { value: null };
+  const mode = AVAILABILITY_MODE_ALIAS[modeText];
+  if (!mode || !entriesText) return { error: '时间安排模式和时间段需同时填写' };
+  const entries = [];
+  for (const raw of entriesText.split(';').map(v => v.trim()).filter(Boolean)) {
+    const m = raw.match(/^([周一二三四五六日、,，]+)\s*(.*)$/);
+    if (!m) return { error: `时间段格式不正确：${raw}` };
+    const dayText = m[1].split(/[、,，]/).filter(Boolean);
+    const weekDays = [...new Set(dayText.map(day => WEEKDAY_ALIAS[day]))];
+    if (weekDays.length !== dayText.length || weekDays.some(day => day == null)) return { error: `星期不正确：${raw}` };
+    const rest = m[2].trim();
+    if (!rest || rest === '全天') {
+      entries.push({ weekDays });
+    } else {
+      const tm = rest.match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
+      if (!tm) return { error: `时间段格式不正确：${raw}` };
+      const range = parseTimeRange(`${tm[1]}:${tm[2]}`, `${tm[3]}:${tm[4]}`);
+      if (!range) return { error: `时间段不合法或跨日：${raw}` };
+      entries.push({ weekDays, ...range });
+    }
+  }
+  return entries.length ? { value: { mode, entries } } : { error: '时间段为空' };
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -134,15 +179,19 @@ export async function exportProjects() {
 
 export async function exportStaffs() {
   const { staffs } = getCache();
-  const aoa = [STAFF_EXPORT_COLS, ...staffs.map(s => [
-    s.id, s.name, STATUS_REV[s.status] ?? s.status,
-    (s.allowedProjects ?? []).join(';'),
-    (s.preferredProjects ?? []).map(p => p.reason ? `${p.projectId}(${p.reason})` : p.projectId).join(';'),
-    (s.bannedProjects ?? []).map(b => b.reason ? `${b.projectId}(${b.reason})` : b.projectId).join(';'),
-    s.maxWeeklyFatigue, s.maxHeavyTaskCount,
-    monthlyFatigueLimitOf(s, getSettings()), monthlyHeavyLimitOf(s, getSettings()),
-    (s.tags ?? []).join(';'),
-  ])];
+  const aoa = [STAFF_EXPORT_COLS, ...staffs.map(s => {
+    const { mode, entries } = formatAvailability(s.availability);
+    return [
+      s.id, s.name, STATUS_REV[s.status] ?? s.status,
+      (s.allowedProjects ?? []).join(';'),
+      (s.preferredProjects ?? []).map(p => p.reason ? `${p.projectId}(${p.reason})` : p.projectId).join(';'),
+      (s.bannedProjects ?? []).map(b => b.reason ? `${b.projectId}(${b.reason})` : b.projectId).join(';'),
+      s.maxWeeklyFatigue, s.maxHeavyTaskCount,
+      monthlyFatigueLimitOf(s, getSettings()), monthlyHeavyLimitOf(s, getSettings()),
+      (s.tags ?? []).join(';'),
+      mode, entries,
+    ];
+  })];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '人员');
@@ -164,9 +213,12 @@ const PROJECT_KEY_ALIAS = {
 const STAFF_KEY_ALIAS = {
   '姓名': '姓名(必填)',
   '状态(新入/活跃/休假/已退出)': '状态(选填;新入/活跃/休假/已退出,默认活跃)',
-  '可胜任项目(分号隔开)': '可胜任项目(必填;分号隔开)',
-  '擅长项目(项目(原因);分号隔开)': '擅长项目(选填;项目(原因),分号隔开)',
-  '不合适项目(项目(原因);分号隔开)': '不合适项目(选填;项目(原因),分号隔开)',
+  '可胜任项目(分号隔开)': '可胜任任务(必填;分号隔开)',
+  '可胜任项目(必填;分号隔开)': '可胜任任务(必填;分号隔开)',
+  '擅长项目(项目(原因);分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
+  '擅长项目(选填;项目(原因),分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
+  '不合适项目(项目(原因);分号隔开)': '不合适任务(选填;任务(原因),分号隔开)',
+  '不合适项目(选填;项目(原因),分号隔开)': '不合适任务(选填;任务(原因),分号隔开)',
   '周疲劳上限(默认6)': '周疲劳上限(选填)',
   '周疲劳上限(选填;默认6)': '周疲劳上限(选填)',
   '高强度次数上限(默认1)': '高强度次数上限(选填)',
@@ -229,38 +281,50 @@ export async function importStaffs(file) {
     const projectIds = new Set(projects.map(p => p.id));
     const byName = new Map(staffs.map(s => [s.name.trim(), s]));
     const byId = new Map(staffs.map(s => [s.id, s]));
-    let added = 0, updated = 0, skipped = 0, reconciled = 0;
+    let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0;
     const settings = getSettings();
     for (const r of rows) {
       if (String(r['姓名(必填)'] ?? '').startsWith('【示例】')) continue;
       const name = String(r['姓名(必填)'] ?? '').trim();
       if (!name) { skipped++; continue; }
+      // 同名或同 ID 覆盖（保留原 ID 与 joinedAt），否则新增；文件内多行同名后者覆盖前者
+      const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
       const status = normalizeStatus(r['状态(选填;新入/活跃/休假/已退出,默认活跃)']);
       // 上限列留空 → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
       const weeklyN = Number(r['周疲劳上限(选填)']);
       const heavyN = Number(r['高强度次数上限(选填)']);
       const monthlyFatigueN = Number(r['月疲劳上限(选填)']);
       const monthlyHeavyN = Number(r['月高强度次数上限(选填)']);
+      const avModeRaw = r['每周时间模式(选填;可用/不可用)'];
+      const avTimeRaw = r['每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)'];
+      let availability;
+      if (avModeRaw === undefined && avTimeRaw === undefined) {
+        // 旧文件无这两列：更新保留既有配置，新增为未配置
+        availability = existing?.availability ?? null;
+      } else {
+        const parsed = parseAvailability(avModeRaw, avTimeRaw);
+        if (parsed.error) { skippedAvailability++; continue; }
+        availability = parsed.value;
+      }
       const fields = {
         name,
         status,
         restFrom: status === 'rest' ? 'active' : null,
-        allowedProjects: parseList(r['可胜任项目(必填;分号隔开)']).filter(id => projectIds.has(id)),
-        preferredProjects: parsePref(r['擅长项目(选填;项目(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
-        bannedProjects: parsePref(r['不合适项目(选填;项目(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
+        allowedProjects: parseList(r['可胜任任务(必填;分号隔开)']).filter(id => projectIds.has(id)),
+        preferredProjects: parsePref(r['擅长任务(选填;任务(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
+        bannedProjects: parsePref(r['不合适任务(选填;任务(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
         maxWeeklyFatigue: Number.isFinite(weeklyN) ? weeklyN : settings.defaultWeeklyFatigue,
         maxHeavyTaskCount: Number.isFinite(heavyN) ? heavyN : settings.defaultHeavyTaskCount,
         maxMonthlyFatigue: Number.isFinite(monthlyFatigueN) ? monthlyFatigueN : settings.defaultMonthlyFatigue,
         maxMonthlyHeavyCount: Number.isFinite(monthlyHeavyN) ? monthlyHeavyN : settings.defaultMonthlyHeavyCount,
         tags: parseTags(r['标签(选填;分号隔开,可多个)']),
+        availability,
       };
       // 三列表关系收敛：可胜任剔除与不合适重叠项、擅长自动并入可胜任、与不合适重叠的擅长剔除（不合适优先）
       const fix = reconcileStaff(fields);
       if (fix.changed) reconciled++;
       fields.allowedProjects = fix.allowedProjects;
       fields.preferredProjects = fix.preferredProjects;
-      // 同名或同 ID 覆盖（保留原 ID 与 joinedAt），否则新增；文件内多行同名后者覆盖前者
-      const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
       const rec = existing
         ? createStaff({ ...fields, id: existing.id, joinedAt: existing.joinedAt })
         : createStaff(fields);
@@ -269,7 +333,8 @@ export async function importStaffs(file) {
       existing ? updated++ : added++;
     }
     const fixNote = reconciled ? `（${reconciled} 名含矛盾配置，已按不合适优先自动修正）` : '';
-    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}` };
+    const availNote = skippedAvailability ? `，跳过 ${skippedAvailability} 条时间安排配置错误` : '';
+    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}${availNote}` };
   } catch (e) {
     return { ok: false, message: `人员导入失败：${e.message}` };
   }

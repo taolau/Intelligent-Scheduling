@@ -85,6 +85,8 @@ const css = `
 .assign-score.top { color:#5a1d78; background:#efe3f6; font-weight:700; } /* 最高推荐分紫高亮（同替换 Top1） */
 .assign-why { font-size:12px; color:#dc2626; }
 .assign-reco { flex:1 0 100%; font-size:12px; color:#6a6178; line-height:1.5; margin-top:2px; } /* 可添加行「优选理由」副行（同替换弹窗人话规则） */
+.assign-warn { flex:1 0 100%; font-size:12px; color:#a16207; background:#fef6e0; border-radius:6px;
+  padding:3px 8px; line-height:1.5; margin-top:2px; } /* 放行但需提醒：可用日仅设时段 + 任务未填时间（黄字） */
 .assign-add { font-size:12px; color:#5a1d78; background:#efe3f6; border-radius:999px; padding:2px 10px;
   opacity:0; transform:translateX(4px); transition:opacity .12s, transform .12s; }
 .assign-row.pickable:hover .assign-add { opacity:1; transform:none; }
@@ -129,6 +131,9 @@ const css = `
   transition:background-color .12s, color .12s, border-color .12s; }
 .rpl-cand-btn:hover { background:#efe3f6; border-color:#d5bde8; color:#5a1d78; } /* hover 淡紫底紫字（原深紫实心底过艳被否） */
 .rpl-cand-why { font-size:12px; color:#6a6178; line-height:1.55; margin-top:3px; }
+.rpl-cand-warn { font-size:12px; color:#a16207; background:#fef6e0; border-radius:6px;
+  padding:3px 8px; line-height:1.5; margin-top:4px; } /* 放行但需提醒（黄字），同 assign-warn 语义 */
+
 .rpl-more-bar { width:100%; margin-top:2px; padding:5px 10px; font-size:12px; color:#5a1d78; background:transparent;
   border:1px dashed #dcc9ef; border-radius:8px; cursor:pointer; text-align:left; }
 .rpl-more-bar:hover { background:#f3e9fa; }
@@ -144,7 +149,7 @@ const css = `
 .field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
 .field-pair { display:flex; gap:10px; }
 .field-pair > .field { flex:1; min-width:0; }
-.field label { font-size:13px; color:#6a6178; font-weight:500; }
+.field label { font-size:14px; font-weight:600; color:#3d3747; line-height:1.4; }
 /* 字段说明 icon + 悬浮气泡（fields.js attachHelp） */
 .field label.with-help { display:inline-flex; align-items:center; gap:6px; }
 .help-ico { flex:none; display:inline-flex; align-items:center; justify-content:center;
@@ -167,6 +172,22 @@ const css = `
 .field .field-error { font-size:12px; color:#dc2626; display:none; }
 .field.is-error .field-error { display:block; }
 .field.is-error .input, .field.is-error .select { border-color:#dc2626; }
+
+/* ===== 行编辑器统一头部（标题+组内钮在左，＋添加在右） ===== */
+.rows-editor-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.rows-editor-title { display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-width:0; }
+.rows-editor-head .rows-editor-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.rows-editor-head .rows-editor-actions .btn { margin:0; flex:none; }
+.rows-editor-head .rows-editor-title .lbl-icon-btn { margin-left:2px; }
+
+/* ===== 每周时间安排编辑器（人员弹窗）：seg 紧跟标题左侧 ===== */
+.availability-editor .availability-mode { flex-shrink:0; align-self:flex-start; }
+.availability-editor .availability-mode button { padding:4px 12px; font-size:13px; }
+.availability-editor .rows-editor-rows .sel { min-width:170px; }
+.availability-editor .rows-editor-rows .tr { min-width:148px; }
+.availability-editor .rows-editor-rows .row-del { flex:none; align-self:center; }
+.availability-editor.is-error .sel-trigger, .availability-editor.is-error .tr-trigger { border-color:#dc2626; }
+
 .input, .select { width:100%; padding:8px 10px; border:1px solid #d0c8d9; border-radius:7px;
   font-size:14px; color:#2a2430; background:#fff; font-family:inherit;
   transition:border-color .15s,box-shadow .15s; }
@@ -751,6 +772,13 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .smart-slot { font-size:11px; color:#5a1d78; background:#efe3f6; border-radius:6px; padding:1px 7px; flex-shrink:0; }
 .smart-gap-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; color:#241f2e; }
 .smart-gap-miss { color:#b45309; font-weight:600; white-space:nowrap; }
+.smart-warnbox { border:1px solid #f0e2a8; background:#fffdf1; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+.smart-warn-title { font-size:11px; font-weight:600; color:#92610a; margin-bottom:6px; }
+.smart-warn { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; border-top:1px dashed #f3e9c8; }
+.smart-warn-title + .smart-warn { border-top:none; padding-top:0; }
+.smart-warn-date { color:#8a6d3b; font-weight:500; white-space:nowrap; }
+.smart-warn-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#241f2e; }
+
 .smart-empty { border:1px dashed #e0d2ef; border-radius:8px; padding:18px 12px; text-align:center; font-size:12px; color:#9b91a7; margin-bottom:8px; }
 .smart-reason { font-size:12px; color:#d97706; margin:-2px 0 8px; }
 .smart-hint { font-size:11px; color:#9b91a7; line-height:1.5; }

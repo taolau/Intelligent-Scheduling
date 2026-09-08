@@ -352,3 +352,99 @@ test('连任拒绝为唯一原因时 tenureOnly=true；与其他拒绝并存时 
   assert.equal(r2.ok, false);
   assert.equal(r2.tenureOnly, false);
 });
+
+// —— 每周时间安排（availability）硬过滤 ——
+// P104 带 timeRange 的任务；slotAv 固定 2026-08-24（周一）。weekDays 内部口径 0=周日…6=周六 → 周一=1
+const P104 = createProject({ id: 'P104', name: '接待', fatigueScore: 1, slots: [{ label: '早' }], timeRange: { start: '10:00', end: '12:00' } });
+const P105NoTime = createProject({ id: 'P105', name: '杂活', fatigueScore: 1, slots: [{ label: '早' }], timeRange: null });
+const projectByIdAv = { ...projectById, P104, [P105NoTime.id]: P105NoTime };
+const slotAv = { date: '2026-08-24', projectId: 'P104', slotLabel: '早' };
+
+test('availability: 未配置人员放行；任务无 timeRange 仅局部不可用段不拦截', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P104'] }); // 无 availability
+  assert.equal(filterCandidate(s, slotAv, projectByIdAv, base()).ok, true);
+
+  // 任务无具体时间 + 当天仅「某几小时不可用」：无法判断班次落在哪 → 不拦
+  const s2 = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P105'], availability: { mode: 'unavailable', entries: [{ weekDays: [1], start: '12:00', end: '13:00' }] } });
+  const slotNoTime = { date: '2026-08-24', projectId: 'P105', slotLabel: '早' };
+  assert.equal(filterCandidate(s2, slotNoTime, projectByIdAv, base()).ok, true);
+});
+
+test('availability 全天（只选星期不写时间）: 与有/无时间任务都判定', () => {
+  const slotNoTimeMon = { date: '2026-08-24', projectId: 'P105', slotLabel: '早' }; // 周一，无具体时间
+  const slotTimedMon = { date: '2026-08-24', projectId: 'P104', slotLabel: '早' };   // 周一，10:00-12:00
+  const slotTimedTue = { date: '2026-08-25', projectId: 'P104', slotLabel: '早' };   // 周二
+
+  // 不可用全天周一：无时间任务必撞；有时间任务（任意时段）也拦
+  const block = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P105', 'P104'], availability: { mode: 'unavailable', entries: [{ weekDays: [1] }] } });
+  assert.equal(filterCandidate(block, slotNoTimeMon, projectByIdAv, base()).ok, false);
+  assert.ok(filterCandidate(block, slotNoTimeMon, projectByIdAv, base()).reasons.some(x => x.includes('整天')));
+  assert.equal(filterCandidate(block, slotTimedMon, projectByIdAv, base()).ok, false);
+  assert.equal(filterCandidate(block, slotTimedTue, projectByIdAv, base()).ok, true);
+
+  // 可用全天周一：无时间任务放行（整周一天可用时才算必排日）
+  const availMon = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P105', 'P104'], availability: { mode: 'available', entries: [{ weekDays: [1] }] } });
+  assert.equal(filterCandidate(availMon, slotNoTimeMon, projectByIdAv, base()).ok, true);
+  assert.equal(filterCandidate(availMon, slotTimedMon, projectByIdAv, base()).ok, true); // 全天覆盖 10-12
+  assert.equal(filterCandidate(availMon, slotTimedTue, projectByIdAv, base()).ok, false); // 周二无可用
+
+  // 可用 = 仅局部时段 + 无时间任务：放行 + 黄字提醒（不拦，但提示可能落不到时段内）
+  const partialOnly = createStaff({ id: 'S3', name: '王五', allowedProjects: ['P105'], availability: { mode: 'available', entries: [{ weekDays: [1], start: '09:00', end: '12:00' }] } });
+  const rw = filterCandidate(partialOnly, slotNoTimeMon, projectByIdAv, base());
+  assert.equal(rw.ok, true);
+  assert.ok((rw.warnings ?? []).some(x => x.includes('可排') && x.includes('09:00'))); // 提醒带出当天可排时段
+
+  // 可用白名单当天完全没配（如只配周二）→ 周一无时间任务仍拦
+  const onlyTue = createStaff({ id: 'S4', name: '赵六', allowedProjects: ['P105'], availability: { mode: 'available', entries: [{ weekDays: [2], start: '09:00', end: '12:00' }] } });
+  const rb = filterCandidate(onlyTue, slotNoTimeMon, projectByIdAv, base());
+  assert.equal(rb.ok, false);
+  assert.ok(rb.reasons.some(x => x.includes('未设可用时间')));
+});
+
+test('availability available: 完整落在可用段内放行；不完整/无当日段拒绝', () => {
+  const ok = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P104'], availability: { mode: 'available', entries: [{ weekDays: [1], start: '09:00', end: '12:00' }] } });
+  assert.equal(filterCandidate(ok, slotAv, projectByIdAv, base()).ok, true);
+
+  const partial = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P104'], availability: { mode: 'available', entries: [{ weekDays: [1], start: '08:00', end: '11:00' }] } });
+  const rp = filterCandidate(partial, slotAv, projectByIdAv, base());
+  assert.equal(rp.ok, false);
+  assert.ok(rp.reasons.some(x => x.includes('时间安排') && x.includes('周一')));
+
+  const otherDay = createStaff({ id: 'S3', name: '王五', allowedProjects: ['P104'], availability: { mode: 'available', entries: [{ weekDays: [2], start: '09:00', end: '12:00' }] } });
+  assert.equal(filterCandidate(otherDay, slotAv, projectByIdAv, base()).ok, false);
+});
+
+test('availability available: 相邻/重叠可用段合并后可覆盖长任务', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P104'], availability: { mode: 'available', entries: [
+    { weekDays: [1], start: '09:00', end: '11:00' },
+    { weekDays: [1], start: '11:00', end: '12:00' },
+  ] } });
+  assert.equal(filterCandidate(s, slotAv, projectByIdAv, base()).ok, true);
+});
+
+test('availability unavailable: 相交拒绝、端点相接放行', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P104'], availability: { mode: 'unavailable', entries: [{ weekDays: [1], start: '10:30', end: '11:30' }] } });
+  const r = filterCandidate(s, slotAv, projectByIdAv, base()); // 任务 10:00-12:00 与 10:30-11:30 相交
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some(x => x.includes('重叠')));
+
+  // 不可用 12:00-13:00：端点相接（任务 12:00 结束）→ 不冲突
+  const edge = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P104'], availability: { mode: 'unavailable', entries: [{ weekDays: [1], start: '12:00', end: '13:00' }] } });
+  assert.equal(filterCandidate(edge, slotAv, projectByIdAv, base()).ok, true);
+
+  // 当日无不可用段 → 放行
+  const otherDay = createStaff({ id: 'S3', name: '王五', allowedProjects: ['P104'], availability: { mode: 'unavailable', entries: [{ weekDays: [2], start: '09:00', end: '10:00' }] } });
+  assert.equal(filterCandidate(otherDay, slotAv, projectByIdAv, base()).ok, true);
+});
+
+test('availability: 与连任并存时 tenureOnly=false（时间冲突不可豁免）', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P104'], availability: { mode: 'available', entries: [{ weekDays: [2], start: '09:00', end: '12:00' }] } });
+  const c = base();
+  c.projectWeeks = new Map([['P104', ['2026-08-17', '2026-08-24']]]);
+  c.tenure = new Map([['S1|P104', new Map([['2026-08-17', 1]])]]);
+  c.settings = { ...DEFAULT_SETTINGS, tenureLimit: 1 };
+  const r = filterCandidate(s, slotAv, projectByIdAv, c);
+  assert.equal(r.ok, false);
+  assert.equal(r.tenureOnly, false);
+  assert.ok(r.reasons.some(x => x.includes('时间安排')));
+});

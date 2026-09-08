@@ -1,8 +1,9 @@
 // ============================================================
 // 排班测试数据 - 全面播种脚本（全机制覆盖版）
 // 用法：打开应用页面 → DevTools Console 粘贴整个文件执行（日期相对"今天"动态生成，任何日期执行都对齐本周）
-//       node 环境 require 本文件做纯核算（不写 localStorage）：const { stats } = require('./测试数据-全面播种.js')
-// 覆盖：11 任务 / 11 人员 / 约 170 班次：上上周 ~ 未来 4 周
+//       node 纯核算：本文件是 IIFE，直接 require 会因 package.json "type":"module" 失败——
+//       需先复制为 .cjs（如 `测试数据-全面播种.cjs`）再 require，取 `{ projects, staffs, schedules, stats }`
+// 覆盖：11 任务 / 13 人员 / 约 170 班次：上上周 ~ 未来 4 周
 // ⚠️ 直接覆盖 localStorage 三表，无自动备份；如需保留当前数据，先「数据备份 → 导出 JSON」再执行
 //
 // 演示点清单（对照 spec §4.2/4.3/5.2 验收）：
@@ -24,6 +25,11 @@
 //  【跨月】    8/31~9/6 周横跨 8/31(8月)/9/1-9/6(9月)：周疲劳同周滚动、月疲劳分账；未来含 9/28~10/11 跨下月
 //  【未满梯队】 9/14、9/18 P01 缺 1；9/21 P01 全空；P06 9/11 缺 1、9/12 全空；P10 9/21/23/28 全空
 //  【一次性/停用】P07 临时搬书(weekDays=[] 手动班 9/11)；P08 采购统计(active:false 仅历史 2 班)
+//  【每周时间 availability】S12 夏岚(new, 可用=仅周三 09:00-12:00) 与 S13 王强(new, 不可用=周一整天+周三 12-14+周五 11:00-12:30)
+//       → 周历翻到对应日期点空班/闪电/智能排班验证：
+//          9/21 P02 前台(无具体时间)空：夏岚「周一未设可用时间…」/ 王强「周一为整天不可用」；
+//          9/23 P02 前台(无具体时间)空：夏岚 = 放行 + 黄字提醒（仅周三局部时段可用）；
+//          9/25 P11 班车(11:30-12:10)空：夏岚「不在周五可用时间内」/ 王强「与周五不可用时间重叠」
 // ============================================================
 (() => {
   // ---------- 日期工具（本地时区，周一锚） ----------
@@ -63,6 +69,8 @@
     { id: 'S09', name: '钱途', status: 'left', joinedAt: Date.now() - 400 * DAY, maxWeeklyFatigue: 10, maxHeavyTaskCount: 2, maxMonthlyFatigue: 40, maxMonthlyHeavyCount: 8, restFrom: null, tags: [], preferredProjects: [], bannedProjects: [], allowedProjects: ['P01', 'P03', 'P06'] },
     { id: 'S10', name: '赵青', status: 'rest', joinedAt: Date.now() - 300 * DAY, maxWeeklyFatigue: 10, maxHeavyTaskCount: 2, maxMonthlyFatigue: 40, maxMonthlyHeavyCount: 8, restFrom: 'active', tags: [], preferredProjects: [], bannedProjects: [], allowedProjects: ['P02', 'P03', 'P04', 'P05'] },
     { id: 'S11', name: '王新', status: 'new', joinedAt: Date.now() - 2 * DAY, maxWeeklyFatigue: 10, maxHeavyTaskCount: 2, maxMonthlyFatigue: 40, maxMonthlyHeavyCount: 8, restFrom: null, tags: ['卫生组'], preferredProjects: [{ projectId: 'P05', reason: '想表现' }], bannedProjects: [], allowedProjects: ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P09', 'P10', 'P11'] },
+    { id: 'S12', name: '夏岚', status: 'new', joinedAt: Date.now() - 1 * DAY, maxWeeklyFatigue: 10, maxHeavyTaskCount: 2, maxMonthlyFatigue: 40, maxMonthlyHeavyCount: 8, restFrom: null, tags: ['时间示例'], preferredProjects: [], bannedProjects: [], allowedProjects: ['P02', 'P11'], availability: { mode: 'available', entries: [{ weekDays: [3], start: '09:00', end: '12:00' }] } },
+    { id: 'S13', name: '王强', status: 'new', joinedAt: Date.now() - 1 * DAY, maxWeeklyFatigue: 10, maxHeavyTaskCount: 2, maxMonthlyFatigue: 40, maxMonthlyHeavyCount: 8, restFrom: null, tags: ['时间示例'], preferredProjects: [], bannedProjects: [], allowedProjects: ['P02', 'P11'], availability: { mode: 'unavailable', entries: [{ weekDays: [1] }, { weekDays: [3], start: '12:00', end: '14:00' }, { weekDays: [5], start: '11:00', end: '12:30' }] } },
   ];
   const S = Object.fromEntries(staffs.map(s => [s.id, s]));
 
@@ -214,6 +222,12 @@
   add(-3, 1, 'P11', '中', ['S05']);                        // 方圆 窗口 2 分
   add(-3, 5, 'P11', '中', ['S05']);                        // 方圆 窗口 4 分
 
+  // ---- A7. 每周时间安排 availability 演示（S12 可用=仅周三09-12；S13 不可用=周一整天+周三12-14+周五11:00-12:30） ----
+  // 三个空班覆盖规则组合；执行后在周历翻到对应日期，点班次/闪电/智能排班观察候选黄字与拒绝原因
+  add(2, 1, 'P02', '早', []);                               // 9/21 周一 · P02 前台(无具体时间)空：夏岚「周一未设可用时间…」/ 王强「周一为整天不可用」
+  add(2, 3, 'P02', '早', []);                               // 9/23 周三 · P02 前台(无具体时间)空：夏岚 放行+黄字(仅周三09-12局部可用)；王强 可排(周三仅局部不可用，无时间班不拦)
+  add(2, 5, 'P11', '中', []);                               // 9/25 周五 · P11 班车(11:30-12:10)空：夏岚「不在周五可用时间内」/ 王强「与周五不可用时间重叠」
+
   // ================= B. 常规自动铺排（6 周，skip 叙事占用） =================
   for (let off = -1; off <= 4; off++) {
     for (let dow = 1; dow <= 7; dow++) {
@@ -264,6 +278,10 @@
     line.push(`  ${s.slotLabel} ${P[s.projectId].name} [${s.staffIds.length ? s.staffIds.map(id => staffName[id]).join('、') : '空'}]`);
   }
   line.push('【P10 巡逻】' + schedules.filter(x => x.projectId === 'P10').map(s => `${s.date.slice(5)} ${s.staffIds.length ? staffName[s.staffIds[0]] : '空'}`).join(' | '));
+  line.push('【availability 演示】(S12 夏岚=可用仅周三09-12 / S13 王强=不可用周一整天+周三12-14+周五11-12:30)');
+  const p2mon = ds(D(2, 1)), p2wed = ds(D(2, 3)), p11fri = ds(D(2, 5));
+  line.push(`  空班待验：P02 前台 ${p2mon.slice(5)}(周一·无具体时间) 空 · ${p2wed.slice(5)}(周三·无具体时间) 空 ｜ P11 班车 ${p11fri.slice(5)}(周五·11:30-12:10) 空`);
+
   const stats = line.join('\n');
 
   if (typeof module !== 'undefined' && module.exports) { module.exports = { projects, staffs, schedules, stats }; return; }
