@@ -145,6 +145,16 @@ const css = `
 .field-pair { display:flex; gap:10px; }
 .field-pair > .field { flex:1; min-width:0; }
 .field label { font-size:13px; color:#6a6178; font-weight:500; }
+/* 字段说明 icon + 悬浮气泡（fields.js attachHelp） */
+.field label.with-help { display:inline-flex; align-items:center; gap:6px; }
+.help-ico { flex:none; display:inline-flex; align-items:center; justify-content:center;
+  width:14px; height:14px; border-radius:50%; color:#a89bb8; cursor:help; }
+.help-ico:hover, .help-ico:focus { color:#5a1d78; }
+.help-ico:focus-visible { outline:none; box-shadow:0 0 0 2px rgba(90,29,120,.25); }
+.help-bub { position:fixed; display:none; z-index:1200; max-width:280px; box-sizing:border-box;
+  background:#fff; border:1px solid #e0d2ef; border-radius:8px; padding:8px 11px;
+  font-size:12.5px; line-height:1.7; color:#4a4453; font-weight:400;
+  box-shadow:0 6px 18px rgba(90,29,120,.13); }
 .lbl-icon-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
   margin-left:6px; padding:0; border:1px solid #e0d2ef; border-radius:6px; background:#f7f1fa; color:#5a1d78;
   cursor:pointer; transition:color .15s,background-color .15s,border-color .15s; }
@@ -540,14 +550,20 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .cfg-op-btns { display:flex; align-items:center; gap:6px; }
 .grid-empty { padding:28px; text-align:center; color:#9b91a7; font-size:14px; }
 
-/* ===== 任务视图（任务说明清单：名称+说明为主，供导出图片）===== */
+/* ===== 任务视图（任务说明清单：名称+时间安排+说明三区段，供导出图片）===== */
 .cfg-view-meta { font-size:13px; color:#6a6178; }
 .tview-list { display:flex; flex-direction:column; }
 .tview-item { padding:15px 6px 16px; border-bottom:1px solid #f1ecf5; }
 .tview-item:last-child { border-bottom:none; }
-.tview-name { font-size:17px; font-weight:700; color:#1e1926; line-height:1.4; word-break:break-all; }
-.tview-meta { display:flex; align-items:center; flex-wrap:wrap; gap:9px; margin-top:7px; font-size:13px; color:#6a6178; }
-.tview-meta .tag { font-size:12px; }
+.tview-top { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; }
+.tview-name { font-size:18px; font-weight:700; color:#1e1926; line-height:1.4; word-break:break-all; min-width:0; }
+.tview-side { flex:none; display:inline-flex; align-items:center; gap:7px; margin-top:3px;
+  font-size:13px; color:#8b728f; white-space:nowrap; }
+.tview-side svg { display:block; }
+.tview-time { display:flex; flex-wrap:wrap; align-items:center; gap:6px 9px; margin-top:6px;
+  font-size:13px; color:#6a6178; line-height:1.5; }
+.tview-time .tag { font-size:12px; }
+.tview-ddot { color:#cdc5d8; }
 .tview-desc { margin-top:8px; font-size:15px; color:#3d3547; line-height:1.8; white-space:pre-wrap; word-break:break-all; }
 .tview-desc.empty { color:#b0a6bc; }
 

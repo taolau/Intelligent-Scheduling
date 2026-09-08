@@ -24,7 +24,6 @@ const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
 const ICON_VIEW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M19 12H5m0 0l6 6m-6-6l6-6"/></svg>';
-const EFFORT_WORDS = ['', '轻松', '中等', '高强度'];
 const SLOT_ORDER = new Map(SLOT_LABELS.map((l, i) => [l, i]));
 
 const TAB_DEFS = [
@@ -415,10 +414,11 @@ async function editStaffDialog(staff) {
     value: target.allowedProjects,
   });
   let lastAllowed = [...allowedSel.value];
-  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '可多选' });
+  const allowedF = field({ label: '可胜任项目', control: allowedSel, hint: '可多选', help: '只给他排勾选的任务，没勾的不会排给他' });
 
   const preferredEditor = rowsEditor({
     label: '擅长项目（加分）', addLabel: '＋ 添加擅长项目',
+    help: '排班优先考虑他擅长的任务，推荐理由会写明你录的原因',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：体力好，搬运熟练' },
@@ -444,6 +444,7 @@ async function editStaffDialog(staff) {
 
   const bannedEditor = rowsEditor({
     label: '不合适项目', addLabel: '＋ 添加不合适项目',
+    help: '不适合他的任务（如腰伤别排搬重活），这类任务一定不会排给他',
     cols: [
       { key: 'projectId', type: 'select', options: projectOptions },
       { key: 'reason', type: 'text', placeholder: '如：腰伤，不宜搬重物' },
@@ -490,28 +491,28 @@ async function editStaffDialog(staff) {
   fatigueInput.type = 'number';
   fatigueInput.min = 1;
   fatigueInput.value = target.maxWeeklyFatigue;
-  const fatigueF = field({ label: '周疲劳上限', control: fatigueInput });
+  const fatigueF = field({ label: '周疲劳上限', help: '一周最多累计的劳累分，满了这周就不给他排新班', control: fatigueInput });
 
   const heavyInput = document.createElement('input');
   heavyInput.className = 'input';
   heavyInput.type = 'number';
   heavyInput.min = 0;
   heavyInput.value = target.maxHeavyTaskCount;
-  const heavyF = field({ label: '周高强度上限', control: heavyInput });
+  const heavyF = field({ label: '周高强度上限', help: '最累的活（劳累指数 3）一周最多排几个', control: heavyInput });
 
   const monthFatigueInput = document.createElement('input');
   monthFatigueInput.className = 'input';
   monthFatigueInput.type = 'number';
   monthFatigueInput.min = 1;
   monthFatigueInput.value = target.maxMonthlyFatigue ?? getSettings().defaultMonthlyFatigue;
-  const monthF = field({ label: '月疲劳上限', control: monthFatigueInput });
+  const monthF = field({ label: '月疲劳上限', help: '一个月（1 号~月底）最多累计的劳累分，满了当月不排新班', control: monthFatigueInput });
 
   const monthHeavyInput = document.createElement('input');
   monthHeavyInput.className = 'input';
   monthHeavyInput.type = 'number';
   monthHeavyInput.min = 0;
   monthHeavyInput.value = target.maxMonthlyHeavyCount ?? getSettings().defaultMonthlyHeavyCount;
-  const monthHeavyF = field({ label: '月高强度上限', control: monthHeavyInput });
+  const monthHeavyF = field({ label: '月高强度上限', help: '最累的活（劳累指数 3）一个月最多排几个', control: monthHeavyInput });
 
   const limitRow = document.createElement('div');
   limitRow.className = 'field-pair';
@@ -782,12 +783,18 @@ function buildTaskViewList(projects) {
 function buildTaskViewItem(p) {
   const item = document.createElement('div');
   item.className = 'tview-item';
+  const top = document.createElement('div');
+  top.className = 'tview-top';
   const name = document.createElement('div');
   name.className = 'tview-name';
   name.textContent = p.name;
-  const meta = document.createElement('div');
-  meta.className = 'tview-meta';
-  meta.innerHTML = taskViewMetaHTML(p);
+  const side = document.createElement('div');
+  side.className = 'tview-side';
+  side.innerHTML = `${ICON_FIRE.repeat(p.fatigueScore)}<span>${p.requiredCapacity} 人</span>`;
+  top.append(name, side);
+  const time = document.createElement('div');
+  time.className = 'tview-time';
+  time.innerHTML = taskViewTimeHTML(p);
   const desc = document.createElement('div');
   desc.className = 'tview-desc';
   if (p.description && p.description.trim()) {
@@ -796,23 +803,25 @@ function buildTaskViewItem(p) {
     desc.classList.add('empty');
     desc.textContent = '未填写说明';
   }
-  item.append(name, meta, desc);
+  item.append(top, time, desc);
   return item;
 }
 
-// 元信息行：文本段与时段 chip 分离成 flex 项（间距统一），文本段内片段用「·」连接
-function taskViewMetaHTML(p) {
-  const bits = [`<span class="tv-t">${ICON_FIRE.repeat(p.fatigueScore)} ${EFFORT_WORDS[p.fatigueScore] ?? ''} · ${p.requiredCapacity} 人/班</span>`];
-  const slots = [...p.slots]
+// 时间安排行：时段 chip 段 +（· 频率 · 时间段）文本段，flex 并排（无文本段时纯时段 chips）
+function taskViewTimeHTML(p) {
+  const chips = [...p.slots]
     .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
-    .map(s => `<span class="tag">${esc(s.label)}</span>`);
-  bits.push(...slots);
-  const right = [
-    p.timeRange ? `${esc(p.timeRange.start)}–${esc(p.timeRange.end)}` : '',
-    p.weekDays.length ? `每周${[...p.weekDays].sort((a, b) => a - b).map(d => '日一二三四五六'[d]).join('、')}` : '',
-  ].filter(Boolean).join(' · ');
-  if (right) bits.push(`<span class="tv-t">${right}</span>`);
-  return bits.join('');
+    .map(s => `<span class="tag">${esc(s.label)}</span>`)
+    .join('');
+  const parts = [];
+  const days = [...p.weekDays].sort((a, b) => a - b);
+  if (days.length === 7) parts.push('每天');
+  else if (days.length) parts.push(`每周${days.map(d => '日一二三四五六'[d]).join('、')}`);
+  if (p.timeRange) parts.push(`${esc(p.timeRange.start)}–${esc(p.timeRange.end)}`);
+  const text = parts.map(t => `<span>${t}</span>`).join('<span class="tview-ddot"> · </span>');
+  const body = chips + (chips && text ? '<span class="tview-ddot"> · </span>' : '') + text;
+  if (!body) return '';
+  return body;
 }
 
 async function editProjectDialog(project) {
@@ -834,14 +843,14 @@ async function editProjectDialog(project) {
     }),
     value: String(target.fatigueScore),
   });
-  const fatigueF = field({ label: '劳累指数', control: fatigueSel });
+  const fatigueF = field({ label: '劳累指数', help: '活累不累：1 轻松 / 2 中等 / 3 高强度。每排一次班，干活的人就累加对应分值', control: fatigueSel });
 
   const capInput = document.createElement('input');
   capInput.className = 'input';
   capInput.type = 'number';
   capInput.min = 1;
   capInput.value = target.requiredCapacity;
-  const capF = field({ label: '所需人数', control: capInput });
+  const capF = field({ label: '所需人数', help: '一个班次安排几个人', control: capInput });
 
   const daysWrap = document.createElement('div');
   daysWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
