@@ -1429,18 +1429,14 @@ function openReplaceDialog(staff, sch) {
 function manualCreate(date, slotLabel, presetProjectId) {
   const body = document.createElement('div');
 
-  const dateInput = document.createElement('input');
-  dateInput.className = 'input';
-  dateInput.type = 'date';
-  dateInput.value = date ?? currentWeekStart;
-  const dateF = field({ label: '日期', required: true, control: dateInput });
-  // hint 实时回显星期，核对所选日期（field 未传 hint 不创建元素，手动插入 err 之前）
-  const dateHint = document.createElement('div');
-  dateHint.className = 'hint';
-  dateF.wrap.insertBefore(dateHint, dateF.err);
-  const syncDateHint = () => { dateHint.textContent = dateInput.value ? weekdayLabel(dateInput.value) : ''; };
-  syncDateHint();
-  dateInput.addEventListener('change', syncDateHint);
+  // 目标日由入口决定（点哪天的 ＋ 即建哪天），不再提供日期选择——原生 date 控件与自建 select/chip 割裂，且改期非必需
+  const fixedDate = date ?? currentWeekStart;
+  const dateRow = document.createElement('div');
+  dateRow.className = 'cal-dim-summary';
+  const datePill = document.createElement('span');
+  datePill.className = 's-tag';
+  datePill.textContent = `${weekdayLabel(fixedDate)} · ${fixedDate}`;
+  dateRow.append('将建班次：', datePill);
 
   // 时段：四 chip 单选点选（与配置页时段 chip 同构）
   const slotWrap = document.createElement('div');
@@ -1479,7 +1475,7 @@ function manualCreate(date, slotLabel, presetProjectId) {
     hint: noProjects ? '暂无任务，请先到「数据配置」页添加任务' : '',
   });
 
-  body.append(dateF.wrap, slotF.wrap, projF.wrap);
+  body.append(dateRow, slotF.wrap, projF.wrap);
 
   const footer = document.createElement('div');
   const okBtn = document.createElement('button');
@@ -1488,12 +1484,11 @@ function manualCreate(date, slotLabel, presetProjectId) {
   okBtn.textContent = '创建';
   if (noProjects) okBtn.disabled = true;
   footer.appendChild(okBtn);
-  const modal = openModal({ title: '手动建班次', body, footer });
+  const modal = openModal({ title: '手动建班次', body, footer, boxClass: 'box-sm' });
   okBtn.onclick = async () => {
-    const dateVal = dateInput.value;
+    const dateVal = fixedDate;
     const projectId = projSel.value;
     let valid = true;
-    if (!dateVal) { setError(dateF, '请选择日期'); valid = false; } else setError(dateF, '');
     if (!projectId) { setError(projF, '请选择任务'); valid = false; } else setError(projF, '');
     if (!valid) return;
     const sch = createSchedule({ date: dateVal, slotLabel: slotValue, projectId });

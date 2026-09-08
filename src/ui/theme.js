@@ -297,6 +297,7 @@ const css = `
   display:flex; flex-direction:column; box-shadow:0 2px 4px rgba(90,29,120,.06), 0 16px 40px rgba(60,12,74,.10); animation:modalIn .18s ease; }
 .box-confirm { max-width:400px; }
 .box-confirm-wide { max-width:600px; } /* 确认弹窗宽款：批量删除预览等需更宽排版 */
+.box-sm { max-width:420px; } /* 精简表单弹窗：手动建班次等字段少用窄款，勿用默认 720 通宽 */
 .modal-box:focus { outline:none; } /* openModal 焦点落容器（tabindex=-1），不画默认焦点环 */
 .modal-header { display:flex; align-items:center; gap:12px; padding:12px 14px 12px 18px; font-weight:600; border-bottom:1px solid #efe9f4; }
 .modal-title { flex:1; min-width:0; }
