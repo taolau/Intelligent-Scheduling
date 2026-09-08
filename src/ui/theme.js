@@ -663,6 +663,8 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
   border-radius:50%; background:#c9b0e0; }
 .set-rule-sec li + li { margin-top:5px; }
 .set-rule-note { margin-top:9px; font-size:12px; color:#8a8099; line-height:1.6; }
+.set-rule-grp { margin:12px 0 0; font-size:12px; font-weight:700; color:#6b5290; letter-spacing:.3px; }
+.set-rule-grp + ul { margin-top:4px; }
 @media (max-width:900px) {
   .cfg-split { flex-direction:column; height:auto; }
   .set-pane { height:auto; min-height:340px; }
