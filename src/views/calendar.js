@@ -1629,11 +1629,12 @@ function openReplaceDialog(staff, sch) {
         const score = document.createElement('span');
         score.className = 'rpl-cand-score' + (isTop ? ' top' : '');
         score.textContent = `${Math.round(r.score)} 分`;
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'rpl-cand-btn';
-        btn.textContent = '选此替补';
-        main.append(nm, score, btn);
+        // 周疲劳右置（同分配弹窗候选行 assign-info 口径 = 该班次所在自然周累计）
+        const fat = document.createElement('span');
+        fat.className = 'rpl-cand-fat';
+        const wkFatigue = ctx.fatigueByWeek.get(`${r.staff.id}|${getWeekStart(s.date)}`) ?? 0;
+        fat.textContent = `周疲劳 ${wkFatigue}/${r.staff.maxWeeklyFatigue}`;
+        main.append(nm, score, fat);
         card.appendChild(main);
         if (r.reasons.length > 0) {
           const why = document.createElement('div');
@@ -1660,7 +1661,7 @@ function openReplaceDialog(staff, sch) {
           rplModal.close();
         }
         function askReplace() {
-          // 二次确认：列明「把谁从哪个班次换下、换上谁」，防误触连点（原一点即写库）
+          // 二次确认：列明「把谁从哪个班次换下、换上谁」，点行误触由确认弹窗兜底
           const name = project?.name ?? s.projectId;
           confirmDialog({
             title: '确认替换',
@@ -1670,8 +1671,8 @@ function openReplaceDialog(staff, sch) {
             onConfirm: doReplace,
           });
         }
-        // 二次确认仅由「选此替补」按钮触发；点行空白不触发（原 card.onclick 整卡触发易误触）
-        btn.onclick = askReplace;
+        // 点整行 = 原「选此替补」按钮触发二次确认（学排班分配弹窗行式：行可点 + 右置周疲劳）
+        card.onclick = askReplace;
         return card;
       };
       // 推荐区 = 全量前 3（首位带 Top1 徽章）

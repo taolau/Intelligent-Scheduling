@@ -120,16 +120,13 @@ const css = `
 .rpl-slot { font-size:11px; color:#5a1d78; background:#efe3f6; border-radius:6px; padding:1px 7px; flex-shrink:0; }
 .rpl-task { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rpl-list { display:flex; flex-direction:column; gap:4px; }
-.rpl-cand { padding:7px 10px; border-radius:8px; cursor:default; transition:background-color .1s; }
-.rpl-cand:hover { background:#f3e9fa; } /* 行保留 hover 高亮便于区分/阅读；点击确认仅由「选此替补」按钮触发，行不绑点击（cursor 默认，无 pointer 误导） */
+.rpl-cand { padding:7px 10px; border-radius:8px; cursor:pointer; transition:background-color .1s; }
+.rpl-cand:hover { background:#f3e9fa; } /* 行式可点（学排班分配弹窗 .assign-row.pickable）：点整行 = 触发二次确认，误触由确认弹窗兜底 */
 .rpl-cand-main { display:flex; align-items:center; gap:8px; }
 .rpl-cand-name { font-weight:500; color:#2a2430; }
-.rpl-cand-score { font-size:11px; color:#8a8099; background:#f1edf5; border-radius:999px; padding:1px 8px; }
+.rpl-cand-score { font-size:11px; color:#8a8099; background:#f1edf5; border-radius:999px; padding:1px 8px; flex-shrink:0; }
 .rpl-cand-score.top { color:#5a1d78; background:#efe3f6; font-weight:700; }
-.rpl-cand-btn { margin-left:auto; flex-shrink:0; font-size:12px; color:#5a1d78; background:#fff;
-  border:1px solid #c9b2dc; border-radius:999px; padding:2px 12px; cursor:pointer;
-  transition:background-color .12s, color .12s, border-color .12s; }
-.rpl-cand-btn:hover { background:#efe3f6; border-color:#d5bde8; color:#5a1d78; } /* hover 淡紫底紫字（原深紫实心底过艳被否） */
+.rpl-cand-fat { margin-left:auto; font-size:12px; color:#9b91a7; flex-shrink:0; } /* 周疲劳右置（同 assign-info） */
 .rpl-cand-why { font-size:12px; color:#6a6178; line-height:1.55; margin-top:3px; }
 .rpl-cand-warn { font-size:12px; color:#a16207; background:#fef6e0; border-radius:6px;
   padding:3px 8px; line-height:1.5; margin-top:4px; } /* 放行但需提醒（黄字），同 assign-warn 语义 */
