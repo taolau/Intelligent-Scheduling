@@ -230,6 +230,7 @@
 - **场景**：score.js 从 `ctx.settings ?? DEFAULT_SETTINGS` 整体解构 `{ preferredBonus, balanceFactor }`，测试只传 `settings: { preferredBonus: 20 }`
 - **根因**：`?? DEFAULT_SETTINGS` 只在 settings **整体为 undefined** 时兜底；settings 存在但**缺个别键**（部分传入/旧数据/不同调用方构造的局部 ctx）时解构得 `undefined` → `undefined * n = NaN`，且不报错一路算进 score 排序（静默错误）。项目里 store.getSettings 有 merge 层保证全键，容易误以为「settings 永远全键」，绕过 merge 直接构造 ctx 的调用（测试/新函数）即触发
 - **解决**：score.js 改逐键兜底 `ctx.settings?.preferredBonus ?? DEFAULT_SETTINGS.preferredBonus`（每键独立 ??）；同时补部分键传入的测试用例钉住
+- **同族复发（09-09 修复）**：filter.js 曾用 `const { dailyTaskLimit, slotTaskLimit } = ctx.settings ?? DEFAULT_SETTINGS` 整体解构——settings 存在但缺这两键时上限检查恒 false 静默失效（日/时段上限被绕过）。已改逐键兜底 + filter.test.js 补「部分缺键仍拦截」回归钉。启示：全库排查「消费 settings 的规则函数」是否还有整体解构残留，新写一律逐键 `?? DEFAULT`。
 - **启示**：凡消费「带默认值的配置对象」，不要整体解构一把 ?? 兜底——逐键 ?? 才免疫部分缺键；有 merge 层的配置数据只对走 merge 的路径成立，调用边界（测试、新入口）常直接传局部对象
 
 ## 29. overflow:auto 滚动容器内 flex 纵向子项默认 flex-shrink 压缩 → 内容静默截断且滚动条不出现

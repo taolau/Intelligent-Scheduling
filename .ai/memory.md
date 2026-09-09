@@ -4,19 +4,23 @@
 # [规则] 重点标注 Tao 的进度。
 
 ## 📍 当前状态
-- **09-09 Excel 导入回归批：全量验证完成，待 Tao 确认提交 push**（node `npm test` 220/220：`test/excel-import.test.js` 25 条含 .xls 格式 + 原有 195；Playwright 盲区补齐——toast 视觉铁证、S02 含括号任务名、S05 文件内多行、.xls 旧格式、round-trip 回导「新增 0/更新 5」，全程 console 0 errors）
-- 回归资产：fixtures 生成器 `docs/脚本/gen-excel-import-fixtures.js` 产 10 文件到 `excel-import-fixtures/`（T01-T05/S01-S05，含 `T05_任务_旧格式.xls`）
+- **09-09 排班规则全面审计批（本会话）：改动待提交（git 未 commit/push）**
+  - 修复 filter.js:77 settings 整体解构缺键致日/时段上限静默失效（#28 同族在 filter 层复发）→ 逐键兜底 + 回归测试钉住
+  - 补 18 条回归测试（220→**238/238 全绿**）：accumulateDelta ± 对称/钳制/窗口外/tenure 专项（此前 -1 路径零覆盖）、warned 阈值可配、new 自动填充贯通、候选 warning 黄字贯通、均衡负分、空 active 池、黑名单无原因、validateProject 分支
+  - Playwright 全链路实测通过（铺排→智能排班→手动建班→分配弹窗拒因→替换三轨联动→批量删除三轨回退，console 0 errors，测试数据已还原）
+  - **名称唯一确认**（Tao 拍板）：已入 spec 3.1/3.2 字段标注 + 5.1「名称唯一」条目
+- **09-09 替换弹窗候选行式改版（Tao 提出，本会话完成）：改动待提交**——去「选此替补」按钮改学排班分配弹窗行式（分徽章 + 周疲劳右置 + 副行人话理由），点整行触发二次确认（误触由 confirmDialog 兜底）；spec 5.3 已同步；Playwright 验证过（0 errors，数据已还原）
+- **09-09 滚动保持 + 劳累指数两批：spec 5.1/5.2 同步完成（spec.md 改动待提交）**；两批功能代码早已提交 push（滚动保持 681a62e / 劳累标识 a01263e、9c8380a）
+- **09-09 Excel 导入回归批：已 push（a9f215a）**——npm test 220/220、回归资产 fixtures 生成器在 `docs/脚本/gen-excel-import-fixtures.js`
 - **dist**：⏳ 旧构建（09-03），需 `node build.js`（Tao 要求时才构建）
 
 ## 🧠 核心决策
-- **Excel 导入收紧定稿**（09-09 Tao 逐条拍板；细节已入 spec 5.5，此处仅留锚）：越界数值落默认并报数；状态白名单仅 new/active/rest/left，其余落活跃并报数；人员三列任务引用解析失败报「丢弃 N 个不存在的任务引用」；休假 restFrom 保留原前态；文件内多行同名净计数（seenIds 去重）；启用列值先 trim。来源：导入边界全面测试产出的疑点清单。
-- 09-09 滚动位置保持定稿（Tao 拍板；**spec 5.2 待同步**）：语境键驱动恢复（排班=粒度|锚点|维度|目标、配置=当前tab）；锚定 = 视口顶首可见周面板序号/配置卡 data-id + 偏移；同步渲染语义保序（inner 无 await 须同步调用，见 pitfalls #39）；tab 切换须同步语境记录。
-- 09-09 劳累指数标识定稿（Tao 拍板；**spec 5.1/5.2 待同步**）：斜切三格刻度亮格数=劳累指数，全档统一淡杏乳 #f6cfaa + 空槽浅紫灰 #e3dbf0；位置=排班卡 title 行右端角标；三张导出图底部自动挂「任务劳累」图例。被否：鱼 SVG、档位色阶两轮。
-- 09-08 字段说明文案原则（长期，spec 5.1 已固化）：hover ⓘ 通俗精简（≤ ~40 字）、禁算法术语、填 0 类特殊语义不特意说；控件 hint 与 ⓘ help 分工并存不互替。
+> 已入 spec 正文的定稿（名称唯一、Excel 收紧、滚动保持、劳累标识、文案原则）不在此重复，spec 为最终载体。此处只留跨会话方法论经验。
+
 - 测试数据红线锚定法（经验，防反复）：3 分任务每周人次 > 团队高强配额时自动铺排必超限 → 锚点周任务手动逐班指定、红线人物从自动池剔除、未来周超限噪点留给领导当调整素材（脚本内已注释）。
-- Playwright 验证法（本次补齐，供未来回归复用）：**toast 记录型 MutationObserver**（`window.__toasts` 持续记录 .toast 新增，绕开 2.5s 移除竞态——file_upload 返回必晚于 toast 生命周期，直接查 DOM 必扑空）；**round-trip 直取 Playwright 落盘下载产物**（`.playwright-mcp/` 已忽略）回传导入验证「新增 0、更新 N」。
+- Playwright 验证法（UI 回归复用）：**toast 记录型 MutationObserver**（`window.__toasts` 持续记录 .toast 新增，绕开 2.5s 移除竞态）；**注入测试数据前先整库备份到 localStorage 临时 key**（跨 reload 存活，测完还原再删 key，防覆盖真实数据）；**round-trip 直取 Playwright 落盘下载产物**（`.playwright-mcp/` 已忽略）回传验证。UI 全链路回归路径 = 批量铺排 → 智能排班 → 手动建班 → 分配弹窗（拒因区）→ 替换（点行二次确认）→ 批量删除（多选态）。
 
 ## ⚠️ 待办与注意
-- **spec 5.1/5.2 同步**：09-09 滚动保持 + 劳累指数两批定稿并入 spec 正文章节（memory「核心决策」有全部细节）。
+- **git 待提交**：本会话改动集（src: filter.js 修复 + calendar.js 替换弹窗行式 + theme.js；test 5 文件 +18 条；.ai/spec.md 三处 + memory.md）——Tao 说提交再走 /commit
 - **dist**：⏳ 旧构建（09-03），Tao 要求时才 `node build.js`
-- pitfalls #44 已入档：含括号任务名填「擅长/不合适」列被正则拆前缀丢弃（导出侧 ID 回退自保）；toast 竞态观察器验证法留「核心决策」不重复入档
+- 注意：filter.js 已逐键兜底（daily/slotTaskLimit），与 score.js 一致；未来新增消费 settings 的规则代码一律逐键 `?? DEFAULT`（#28 教训，勿整体解构一把兜）
