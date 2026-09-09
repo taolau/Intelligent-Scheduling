@@ -19,10 +19,27 @@ test('擅长加分 +15', () => {
 
 test('均衡加分: 积分低于平均得正分', () => {
   const s = createStaff({ id: 'S1', name: '张三' });
-  const ctx = { fatigueWindow: new Map([['S1', 2]]), teamAvg: 4 };
+  const ctx = { fatigueWindow: new Map([['S1', 2]]), teamAvg: 4, settings: { balanceFactor: 5 } }; // 显式系数钉场景，不随系统默认漂移
   const r = scoreCandidate(s, slot, projectById, ctx);
   const bal = r.breakdown.find(b => b.label.includes('均衡'));
   assert.equal(bal.points, (4 - 2) * 5);
+});
+
+test('均衡加分: 积分高于平均得负分（排班多的人被拉低优先级）', () => {
+  const s = createStaff({ id: 'S1', name: '张三' });
+  const ctx = { fatigueWindow: new Map([['S1', 8]]), teamAvg: 4, settings: { balanceFactor: 5 } }; // 显式系数钉场景
+  const r = scoreCandidate(s, slot, projectById, ctx);
+  const bal = r.breakdown.find(b => b.label.includes('均衡'));
+  assert.equal(bal.points, (4 - 8) * 5);
+  assert.ok(bal.points < 0);
+});
+
+test('computeTeamAvg: active 空池（全 rest/new/left/无成员）返回 0 不崩', () => {
+  const rest = createStaff({ id: 'S1', name: 'A', status: 'rest', restFrom: 'active' });
+  const fresh = createStaff({ id: 'S2', name: 'B', status: 'new' });
+  const left = createStaff({ id: 'S3', name: 'C', status: 'left' });
+  assert.equal(computeTeamAvg([rest, fresh, left], new Map()), 0);
+  assert.equal(computeTeamAvg([], new Map()), 0);
 });
 
 test('新入均衡加分按平均计 → 0', () => {
@@ -57,7 +74,7 @@ test('擅长加分读取 settings.preferredBonus（默认 15 可配）', () => {
   assert.equal(r.score, 20);
 });
 
-test('均衡加分读取 settings.balanceFactor（默认 5 可配）', () => {
+test('均衡加分读取 settings.balanceFactor（可配，默认已改 10）', () => {
   const s = createStaff({ id: 'S1', name: '张三' });
   const ctx = { fatigueWindow: new Map([['S1', 2]]), teamAvg: 4, settings: { balanceFactor: 3 } };
   const r = scoreCandidate(s, slot, projectById, ctx);

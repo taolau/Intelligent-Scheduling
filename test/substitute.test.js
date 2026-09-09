@@ -287,3 +287,30 @@ test('recommendSubstitutes: base 空时连任者豁免上榜', () => {
   assert.equal(out.length, 1);
   assert.equal(out[0].staff.id, 'A');
 });
+
+// —— 候选黄字 warning 贯通（spec 5.2：available 仅设时段 + 无时间任务 → 放行但候选带提醒）——
+
+test('recommendSubstitutes: 无时间任务 + 候选可用日仅设局部时段 → 放行并带 warning 黄字', () => {
+  const P = createProject({ id: 'P2', name: '杂活', fatigueScore: 1, slots: [{ label: '早' }], timeRange: null });
+  const staffs = [
+    createStaff({ id: 'S1', name: '被替换人', allowedProjects: ['P2'] }),
+    createStaff({ id: 'S2', name: '甲', allowedProjects: ['P2'], availability: { mode: 'available', entries: [{ weekDays: [1], start: '09:00', end: '12:00' }] } }),
+    createStaff({ id: 'S3', name: '乙', allowedProjects: ['P2'] }),
+  ];
+  const sch = { date: '2026-08-24', projectId: 'P2', slotLabel: '早', staffIds: ['S1'] }; // 周一
+  const ctx = buildContext(staffs, [sch], { P2: P }, undefined, TODAY);
+  const out = recommendSubstitutes(staffs, sch, { P2: P }, ctx, 'S1');
+  const withWarn = out.find(r => r.staff.id === 'S2');
+  assert.ok(withWarn, '局部时段候选人应上榜（放行）');
+  assert.ok(withWarn.warning.includes('周一') && withWarn.warning.includes('09:00'));
+  const clean = out.find(r => r.staff.id === 'S3');
+  assert.equal(clean.warning, ''); // 无时间安排限制者不带提醒
+});
+
+test('narrateReasons: 窗口天数取 settings.balanceWindowDays（非默认 7 天 → 文案「近 7 天」）', () => {
+  const staff = { id: 'S9', status: 'active' };
+  const lines = narrateReasons(staff, schNarrate, P101Narrate,
+    [{ label: '均衡加分', points: 2, reason: '旧黑话' }],
+    { fatigueWindow: new Map([['S9', 0]]), teamAvg: 5, settings: { balanceWindowDays: 7 } });
+  assert.deepEqual(lines, ['近 7 天排班较少，建议优先']);
+});

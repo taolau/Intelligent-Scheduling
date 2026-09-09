@@ -74,7 +74,9 @@ export function checkAvailability(staff, schedule, project) {
 export function filterCandidate(staff, schedule, projectById, ctx) {
   const reasons = [];
   const project = projectById[schedule.projectId];
-  const { dailyTaskLimit, slotTaskLimit } = ctx.settings ?? DEFAULT_SETTINGS;
+  // 逐键兜底（防 #28 族：settings 存在但缺个别键时整体 ?? 不生效 → undefined 参与比较静默失效）
+  const dailyTaskLimit = ctx.settings?.dailyTaskLimit ?? DEFAULT_SETTINGS.dailyTaskLimit;
+  const slotTaskLimit = ctx.settings?.slotTaskLimit ?? DEFAULT_SETTINGS.slotTaskLimit;
 
   if (staff.status === 'left') reasons.push('已退出，不可排班');
   if (staff.status === 'rest') reasons.push('休假中，不可排班');

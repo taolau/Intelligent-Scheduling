@@ -25,6 +25,35 @@ test('黑名单拒绝并带原因', () => {
   assert.ok(r.reasons[0].includes('腰伤'));
 });
 
+test('黑名单未录原因 → 文案回退「无原因」', () => {
+  const s = createStaff({ id: 'S1', name: '张三', bannedProjects: [{ projectId: 'P101' }] });
+  const r = filterCandidate(s, slot, projectById, base());
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons[0].includes('黑名单'));
+  assert.ok(r.reasons[0].includes('无原因'));
+});
+
+// —— settings 部分缺键兜底（G1 修复回归钉）：daily/slotTaskLimit 逐键 ?? 默认，缺键不得静默失效 ——
+
+test('settings 部分缺键（缺 daily/slotTaskLimit）→ 日/时段上限仍生效（逐键兜底防 #28 族）', () => {
+  const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102', 'P103'] });
+  // 只带 tenureLimit 一个键的局部 settings（模拟测试/新调用方传局部对象）
+  const ctx = base();
+  ctx.settings = { tenureLimit: 3 };
+
+  ctx.dailyCounts.set('S1|2026-08-24', 3); // 当日已达 3（默认上限 3）
+  const r1 = filterCandidate(s, slot, projectById, ctx);
+  assert.equal(r1.ok, false, '缺 dailyTaskLimit 键时当日上限仍须拦截');
+  assert.ok(r1.reasons.some(x => x.includes('当日')));
+
+  const ctx2 = base();
+  ctx2.settings = { tenureLimit: 3 };
+  ctx2.slotCounts.set('S1|2026-08-24|早', 1); // 「早」时段已达 1（默认上限）
+  const r2 = filterCandidate(s, slot, projectById, ctx2);
+  assert.equal(r2.ok, false, '缺 slotTaskLimit 键时段上限仍须拦截');
+  assert.ok(r2.reasons.some(x => x.includes('时段')));
+});
+
 test('无权限拒绝', () => {
   const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P102'] });
   const r = filterCandidate(s, slot, projectById, base());
@@ -111,9 +140,10 @@ test('时段数量超限: 同一时段已有班次拒绝', () => {
   assert.ok(r.reasons[0].includes('时段'));
 });
 
-test('日数量超限: 当天已有 2 个班次拒绝第 3 个', () => {
+test('日数量超限: 当天已有 2 个班次拒绝第 3 个（显式上限 2）', () => {
   const s = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102', 'P103'] });
   const ctx = base();
+  ctx.settings = { ...DEFAULT_SETTINGS, dailyTaskLimit: 2 }; // 显式钉场景，不随系统默认漂移
   ctx.dailyCounts.set('S1|2026-08-24', 2); // 当天已排 2 个（上限 2）
   const r = filterCandidate(s, slot, projectById, ctx);
   assert.equal(r.ok, false);
@@ -192,12 +222,14 @@ test('高强度次数文案：已超（2/1）与恰满（1/1）区分', () => {
 test('当日任务数文案：已超（3/2）与恰满（2/2）区分', () => {
   const s1 = createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102', 'P103'] });
   const ctx1 = base();
+  ctx1.settings = { ...DEFAULT_SETTINGS, dailyTaskLimit: 2 }; // 显式钉场景，不随系统默认漂移
   ctx1.dailyCounts.set('S1|2026-08-24', 3);
   const r1 = filterCandidate(s1, slot, projectById, ctx1);
   assert.ok(r1.reasons.some(x => x.includes('当日') && x.includes('已超限')));
 
   const s2 = createStaff({ id: 'S2', name: '李四', allowedProjects: ['P101', 'P102', 'P103'] });
   const ctx2 = base();
+  ctx2.settings = { ...DEFAULT_SETTINGS, dailyTaskLimit: 2 };
   ctx2.dailyCounts.set('S2|2026-08-24', 2);
   const r2 = filterCandidate(s2, slot, projectById, ctx2);
   assert.ok(r2.reasons.some(x => x.includes('当日') && x.includes('已达上限')));

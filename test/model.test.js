@@ -4,6 +4,29 @@ import { createProject, createStaff, createSchedule,
          validateProject, validateStaff, reconcileStaff, parseTags, formatTags, availabilityProblem,
          SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../src/data/model.js';
 
+test('validateProject: 空名称拒绝', () => {
+  const p = createProject({ name: '', weekDays: [1], slots: [{ label: '早' }] });
+  const r = validateProject(p);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'name'));
+});
+
+test('validateProject: weekDays 越界拒绝（-1 / 7）', () => {
+  for (const bad of [[-1], [7], [1, 7]]) {
+    const p = createProject({ name: 'X', weekDays: bad, slots: [{ label: '早' }] });
+    const r = validateProject(p);
+    assert.equal(r.valid, false, `应拒绝 weekDays=${JSON.stringify(bad)}`);
+    assert.ok(r.errors.some(e => e.field === 'weekDays'));
+  }
+});
+
+test('validateProject: requiredCapacity 为 0 拒绝（人数须 >= 1）', () => {
+  const p = createProject({ name: 'X', requiredCapacity: 0, weekDays: [1], slots: [{ label: '早' }] });
+  const r = validateProject(p);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.field === 'requiredCapacity'));
+});
+
 test('createProject 带默认值', () => {
   const p = createProject({ name: '场地搬运' });
   assert.equal(p.fatigueScore, 1);
@@ -222,8 +245,8 @@ test('SLOT_LABELS 预置四时段标签', () => {
 
 test('DEFAULT_SETTINGS 默认值', () => {
   assert.deepEqual(DEFAULT_SETTINGS, {
-    dailyTaskLimit: 2, slotTaskLimit: 1, warnDailyCount: 1,
-    preferredBonus: 15, tagBonus: 15, balanceFactor: 5, balanceWindowDays: 30,
+    dailyTaskLimit: 3, slotTaskLimit: 1, warnDailyCount: 2,
+    preferredBonus: 15, tagBonus: 15, balanceFactor: 10, balanceWindowDays: 30,
     defaultWeeklyFatigue: 10, defaultHeavyTaskCount: 2,
     defaultMonthlyFatigue: 40, defaultMonthlyHeavyCount: 8, tenureLimit: 3,
   });
