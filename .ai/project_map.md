@@ -7,10 +7,10 @@
 
 ```
 Intelligent-Scheduling/
-  index.html          # 入口（含首屏侧边栏样式内联，消除 FOUC；发布时 esbuild 内联为 dist/index.html 单文件）
+  index.html          # 入口（含首屏侧边栏样式内联，消除 FOUC；发布时 esbuild 内联为 dist/Numbers.html 单文件）
   package.json        # scripts: dev(vite) / build(esbuild单文件) / test(node:test)
-  build.js            # 打包脚本 → dist/index.html（开发多模块,发布单文件）
-  dist/               # 构建产物（gitignore,仅 index.html）
+  build.js            # 打包脚本 → dist/Numbers.html（开发多模块,发布单文件）
+  dist/               # 构建产物（gitignore,仅 Numbers.html）
   docs/               # 本地文档（storage.md = localStorage key 全量登记表与维护规则；score-rules.md = 排班推荐分数规则人话手册，spec 4.x 为真源；脚本/ = 测试数据播种脚本，DevTools Console 粘贴执行、日期相对今天，含全面版与锚点清单）
   test/               # node:test 单测（算法层+模型+数据层 db/store）
 ```
