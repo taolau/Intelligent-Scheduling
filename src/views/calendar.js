@@ -66,7 +66,71 @@ const ICON_TODAY_FLAG = '<svg class="cal-today-flag" viewBox="0 0 24 24" fill="n
 const ICON_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;display:block"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_DAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;display:block"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 
+// ===== 重渲染滚动锚点（09-09）=====
+// 语境键 = 决定"看什么内容"的状态（粒度/锚点/维度/目标）。语境未变 = 纯操作刷新（保存/拖拽/
+// 替换/闪电/铺排确认/批量删除等）→ 把视口送回原周面板，否则月粒度每次操作后都滚回顶部；
+// 语境变化 = 翻页/切换（navShift/switchScale/切维度/菜单重进）→ 主动换内容，回顶为预期。
+let lastViewKey = null;
+
+function viewKey() {
+  return `${timeScale}|${timeScale === 'month' ? monthAnchor : currentWeekStart}|${viewMode}|${viewTargetId}`;
+}
+
+// 捕获快照：记下视口顶部落在第几个周面板 + 面板内偏移（月）；未超高无可滚 → null
+function captureScrollAnchor(container) {
+  const stack = container.querySelector('.cal-month-stack');
+  if (stack) {
+    if (stack.scrollHeight <= stack.clientHeight) return null;
+    const sTop = stack.getBoundingClientRect().top;
+    const panels = stack.querySelectorAll(':scope > .cal-month-panel');
+    for (let i = 0; i < panels.length; i++) {
+      const r = panels[i].getBoundingClientRect();
+      if (r.bottom > sTop) {
+        return { kind: 'month', idx: i, off: Math.max(0, sTop - r.top) };
+      }
+    }
+    return null; // 视口顶已低于最后面板（贴底余白），无可锚定
+  }
+  const grid = container.querySelector('.cal-grid');
+  if (grid && grid.scrollHeight > grid.clientHeight) {
+    return { kind: 'week', off: grid.scrollTop };
+  }
+  return null;
+}
+
+// 恢复：按「第几个周面板 + 偏移」送回，上方内容高度变化时仍对准同一面板（像素直恢会错位）
+function restoreScrollAnchor(container, anchor) {
+  if (!anchor) return;
+  if (anchor.kind === 'month') {
+    const stack = container.querySelector('.cal-month-stack');
+    if (!stack) return;
+    const p = stack.querySelectorAll(':scope > .cal-month-panel')[anchor.idx];
+    if (!p) return;
+    const base = p.getBoundingClientRect().top - stack.getBoundingClientRect().top;
+    const max = Math.max(0, stack.scrollHeight - stack.clientHeight);
+    stack.scrollTop = Math.min(max, base + anchor.off);
+    return;
+  }
+  const grid = container.querySelector('.cal-grid');
+  if (!grid) return;
+  const max = Math.max(0, grid.scrollHeight - grid.clientHeight);
+  grid.scrollTop = Math.min(max, anchor.off);
+}
+
 export async function renderCalendar(container, opts = {}) {
+  const key = viewKey();
+  const sameCtx = key === lastViewKey;
+  lastViewKey = key;
+  const anchor = sameCtx ? captureScrollAnchor(container) : null;
+  try {
+    // 同步调用：inner 内部无 await，保持「调用即渲染完成」的同步语义（调用方有渲染后立即读 DOM 的路径，如批量删除入口的 selectable 检查）
+    renderCalendarInner(container, opts);
+  } finally {
+    restoreScrollAnchor(container, anchor);
+  }
+}
+
+async function renderCalendarInner(container, opts = {}) {
   // 批量删除多选态：任何外部触发/重渲染自动退出（本态进入/退出自渲染走 opts.keepBatch）
   if (batchDeleteActive && !opts.keepBatch) exitBatchState();
   data = getCache();

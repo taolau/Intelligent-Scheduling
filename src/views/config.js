@@ -32,9 +32,55 @@ const TAB_DEFS = [
   { key: 'settings', label: '系统设置', render: renderSettings },
 ];
 
-export function renderConfig(container) {
-  const keepTab = document.querySelector('.seg button.active')?.textContent
+// ===== 重渲染滚动锚点（09-09）：同排班视图——配置操作（编辑保存/删除/新增）后全量重建，
+// 语境（当前 tab）未变时把视口送回原位；切 tab/菜单重进等换内容场景不恢复。
+// 锚定「视口顶第一张可见卡」：data-id 优先 + 原索引兜底——顶部增/删卡后视口内容不跳位。
+let lastCfgTab = null;
+
+function cfgTabKey() {
+  return document.querySelector('.seg button.active')?.textContent
     ?? (TAB_DEFS.find(t => t.key === localStorage.getItem(KEYS.configTab))?.label ?? '人员管理');
+}
+
+function captureCfgAnchor(container) {
+  const paneBody = container.querySelector('.cfg-pane-body');
+  if (!paneBody || paneBody.scrollHeight <= paneBody.clientHeight) return null;
+  const top = paneBody.getBoundingClientRect().top;
+  const cards = paneBody.querySelectorAll('.cfg-card');
+  for (let i = 0; i < cards.length; i++) {
+    const r = cards[i].getBoundingClientRect();
+    if (r.bottom > top) return { id: cards[i].dataset.id ?? null, idx: i, off: Math.max(0, top - r.top) };
+  }
+  return null;
+}
+
+function restoreCfgAnchor(container, anchor) {
+  if (!anchor) return;
+  const paneBody = container.querySelector('.cfg-pane-body');
+  if (!paneBody) return;
+  const cards = paneBody.querySelectorAll('.cfg-card');
+  let target = anchor.id ? [...cards].find(c => c.dataset.id === anchor.id) : null;
+  if (!target && cards.length) target = cards[Math.min(anchor.idx, cards.length - 1)];
+  if (!target) return;
+  const base = target.getBoundingClientRect().top - paneBody.getBoundingClientRect().top;
+  const max = Math.max(0, paneBody.scrollHeight - paneBody.clientHeight);
+  paneBody.scrollTop = Math.min(max, base + anchor.off);
+}
+
+export function renderConfig(container) {
+  const tab = cfgTabKey();
+  const sameTab = tab === lastCfgTab;
+  lastCfgTab = tab;
+  const anchor = sameTab ? captureCfgAnchor(container) : null;
+  try {
+    renderConfigInner(container);
+  } finally {
+    restoreCfgAnchor(container, anchor);
+  }
+}
+
+function renderConfigInner(container) {
+  const keepTab = cfgTabKey();
   container.innerHTML = '';
   const frame = document.createElement('div');
   frame.className = 'cfg-frame';
@@ -56,6 +102,7 @@ export function renderConfig(container) {
   const activate = (i) => {
     btns.forEach((b, j) => b.classList.toggle('active', j === i));
     localStorage.setItem(KEYS.configTab, TAB_DEFS[i].key);
+    lastCfgTab = TAB_DEFS[i].label; // tab 切换不经 renderConfig，须同步语境记录（否则下次保存误判为已换 tab 而不恢复）
     head.style.display = TAB_DEFS[i].key === 'settings' ? 'none' : '';
     TAB_DEFS[i].render(head, scroll);
   };
@@ -320,6 +367,7 @@ async function renderStaffs(head, scroll) {
       : '<span class="empty">未设置</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
+    card.dataset.id = s.id;
     card.dataset.tagsJson = JSON.stringify(s.tags ?? []);
     const tagsHtml = (s.tags ?? []).length
       ? s.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
@@ -752,6 +800,7 @@ async function renderProjects(head, scroll) {
       : '<span class="empty">未设置</span>';
     const card = document.createElement('div');
     card.className = 'card cfg-card';
+    card.dataset.id = p.id;
     card.innerHTML = `
       <div class="cfg-card-head">
         <span class="cfg-card-title">${esc(p.name)}</span>
@@ -1247,7 +1296,25 @@ const RULE_SECS = [
   },
 ];
 
-function renderSettings(head, scroll) {
+// 系统设置保存 = 原位自刷新（重建左右面板，不经 renderConfig）：opts.keepScroll 时保留双面板滚动位置；
+// tab 切入等无 opts 调用自然回顶（内容全新）
+function renderSettings(head, scroll, opts = {}) {
+  const prevTops = opts.keepScroll
+    ? [...scroll.querySelectorAll('.set-pane-body')].filter(p => p.scrollHeight > p.clientHeight).map(p => p.scrollTop)
+    : null;
+  try {
+    renderSettingsInner(head, scroll);
+  } finally {
+    if (prevTops) {
+      scroll.querySelectorAll('.set-pane-body').forEach((p, i) => {
+        if (prevTops[i] == null) return;
+        p.scrollTop = Math.min(prevTops[i], Math.max(0, p.scrollHeight - p.clientHeight));
+      });
+    }
+  }
+}
+
+function renderSettingsInner(head, scroll) {
   const s = getSettings();
   head.innerHTML = '';
   scroll.innerHTML = '';
@@ -1338,7 +1405,7 @@ function renderSettings(head, scroll) {
     });
     saveSettings(draft);
     showToast('设置已保存', 'success');
-    renderSettings(head, scroll);
+    renderSettings(head, scroll, { keepScroll: true });
   };
   opsL.append(resetBtn, saveBtn);
   topL.appendChild(opsL);
