@@ -324,3 +324,35 @@
 - **根因**：`delBatchBtn.onclick` 里 `renderCalendar(keepBatch)` 之后**同步**执行 `document.querySelectorAll('.cal-slot-card .sch-card.selectable')` 判断「当前视图是否无可删班次」——原代码里渲染同步完成、读到的是新 DOM；外壳加 await 后读取发生在 inner 执行**之前**，读到旧 DOM（旧卡无 selectable class）→ 误判空 → `exitBatchState()` + 二次 renderCalendar + 误导 toast。同一竞态下两次渲染交错还造成滚动捕获中间态错乱（读到 0/2680 不稳定值）
 - **解决**：inner 内部无 await 时外壳**同步调用**（不 await，try/finally 仍保 restore）。wrapper 的 capture 与 restore 都同步、inner 同步 → 与原调用时序完全一致
 - **启示**：把同步渲染函数拆成 async 壳时先 grep 调用方是否有「renderXxx(...) 后同步读/查 DOM」的路径；async 函数的语义是「首个 await 前的代码同步执行、之后全进 microtask」——inner 不含 await 就同步调，别习惯性写 await。连带启示：修改主渲染路径后，验证清单要含「渲染函数调用点后紧跟 DOM 查询」的入口（本项目 = 批量删除入口的 selectable 检查）
+
+## 40. dev server 运行中替换 npm 依赖 → Vite optimize 缓存残留旧路径：重启前清 node_modules/.vite
+
+- **报错**：`Error: ENOENT: no such file or directory, open 'node_modules/xlsx/xlsx.mjs'`；页面加载 `Failed to load resource: 504 (Outdated Optimize Dep) @ /node_modules/.vite/deps/...`
+- **场景**：dev server 运行中执行 `npm uninstall xlsx && npm install xlsx-js-style`（依赖被换），刷新页面触发 Vite 重新优化依赖
+- **根因**：Vite 的依赖预构建缓存（`node_modules/.vite/deps`）仍引用旧包路径；lockfile 变化触发 re-optimize，但缓存/依赖图里有残留对已删除 `node_modules/xlsx` 的引用 → 读旧路径 ENOENT；页面侧旧 optimize URL 失效返回 504
+- **解决**：换依赖后**重启 dev server**（必要），若仍报 ENOENT 删 `node_modules/.vite` 缓存再启；页面 504 是「依赖已重优化、页面缓存旧 URL」，reload 页面即可
+- **启示**：改 `package.json` 依赖的动作不要在 dev server 运行中做完整切换——装/卸依赖后先清 `.vite` 缓存再重启服务；「reload 后 504 / ENOENT 旧包路径」先怀疑 Vite 优化缓存而非代码
+
+## 41. CJS 依赖在 node 原生 ESM 下 `import * as X` 只给 `{ default }`，与 Vite/esbuild 的 interop 不同
+
+- **报错**：node 单测 `X.utils` 为 undefined（`TypeError: Cannot read properties of undefined (reading 'aoa_to_sheet')`）；浏览器端却正常
+- **场景**：`import * as XLSX from 'xlsx-js-style'`（CommonJS 包）——node `node --test` 下运行报错，Vite dev / esbuild build 正常
+- **根因**：三个环境的 CJS/ESM interop 不一致——**node 原生 ESM** 对 CJS 包的 namespace import 只暴露 `{ default: module.exports }`（无 cjs-module-lexer 识别出的命名导出）；**Vite 预构建**给 `{ default, ...命名导出 }`；**esbuild** 把 namespace 直接映射到 module.exports（`ns.default` 是 undefined）。同一行 import 三端形态不同
+- **解决**：统一取 `const X = XLSX_NS.default ?? XLSX_NS;`（三端皆命中有效对象）；node 测试与浏览器共用同一文件时按此写
+- **启示**：凡库是 CommonJS、且同一源码要同时被「node 单测 + 浏览器（Vite/esbuild）」加载，`import * as ns` 一律配 `ns.default ?? ns`；「node 测 undefined、浏览器正常」先查 interop 形态差异，别当模块导出缺失
+
+## 42. xlsx-js-style（SheetJS 样式 fork）的 border.all 快捷写法不写入 XML：必须显式四边
+
+- **报错**：导出的 xlsx 打开后单元格无边框，styles.xml 里 `<borders>` 全是空占位（`<left/><right/><top/><bottom/>` 无 style/color），表头边框静默丢失
+- **场景**：`cell.s = { border: { all: { style: 'thin', color: { rgb: '...' } } }, ... }`，期望全边框
+- **根因**：xlsx-js-style 1.2.0 对 `border.all` 快捷对象的合并/写入有 bug——font/fill/alignment 都正常写入，唯独 `all` 分支不产出 `<left style=...>` 等节点，只留下空的 border 占位（cellXfs 里 applyBorder=1 但 borderId 指向空 border）
+- **解决**：border 一律显式四边 `{ top: { style, color }, bottom: {...}, left: {...}, right: {...} }`；验收不靠 read 回读 `.s`（该 fork 读端不回填样式），要解包 xlsx 查 styles.xml 的 `<borders>`
+- **启示**：用样式 fork 库写样式，对「某类样式不生效」要解包 XML 验证写入结果（read 回读 .s 可能 undefined 具误导性）；能进 styles.xml 的字段（font/fill/alignment）与不进的（border.all）分开测试
+
+## 43. `Number('')` = 0 会吞数值字段「空 → 默认」：上限类留空被错存成 0（0 可能是合法禁排值）
+
+- **报错**：Excel 导入人员，周疲劳上限列留空，导入后 `maxWeeklyFatigue` = 0（期望系统设置默认值，如 10）；0 使该人任何排班都判「本周疲劳超限」
+- **场景**：`const weeklyN = Number(r['周疲劳上限(选填)']); maxWeeklyFatigue: Number.isFinite(weeklyN) ? weeklyN : settings.defaultWeeklyFatigue`，空单元格经 `sheet_to_json(defval:'')` 得 `''`
+- **根因**：`Number('')` 返回 **0** 而非 NaN——`isFinite(0)` 为 true，空值被当成合法的 0 存下，默认值分支永远不触发；与 pitfalls #30（`Number(x) || 默认` 吞合法 0）是同一枚硬币的两面：**空值判定不能靠 truthiness，也不能靠 isFinite 直接判 `Number('')`**
+- **解决**：显式判空 `const t = String(v ?? '').trim(); if (t === '') return undefined;` 再 `Number(t)` 且 `isFinite`；消费侧 `weeklyN ?? settings.default`（undefined 走默认、0 保留为禁排语义）
+- **启示**：凡「数值输入空/非法回默认」的解析，统一 helper「空 → undefined、非空 isFinite → 数值、0 合法保留」；新增导入导出批量改字段时，对每个「可留空有默认」的数值列补单测钉住「空→默认」与「0→保留」两条路径

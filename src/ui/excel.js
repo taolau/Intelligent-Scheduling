@@ -1,43 +1,58 @@
-import * as XLSX from 'xlsx';
+// xlsx-js-style = SheetJS 0.18.5 的样式写入 fork（API 完全兼容，仅多支持 cell.s → styles.xml）
+// CJS/ESM interop：node 原生 ESM 取 .default，Vite/esbuild 直接映射 namespace，统一取有效对象
+import * as XLSX_NS from 'xlsx-js-style';
+const XLSX = XLSX_NS.default ?? XLSX_NS;
 import { createProject, createStaff, isValidTimeRange, reconcileStaff, parseTags, SLOT_LABELS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { getCache, saveProject, saveStaff, getSettings } from '../data/store.js';
 
-// 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）无 ID 列；导出（存档/迁移）保留 ID 保证引用关系，导入两种均兼容。
-const PROJECT_BASE_COLS = [
+// 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）与导出（存档/迁移）均无 ID 列、重导入按名称匹配；
+// 模板表头带填表说明，导出表头简洁（给领导看的存档），两者 KEY_ALIAS 兜底均可重导入。
+// 列顺序 = 配置页卡片字段展示顺序（任务：名称+启用→劳累→人数→星期→时段→时间段→加分标签→说明；人员：姓名+状态→可胜任→擅长→不合适→标签→时间安排→周/月疲劳→周/月高强）
+// 表头只标「必填」（名称），其余选填不标注——不填有默认/可留空，导入时自动入默认值
+export const PROJECT_BASE_COLS = [
   '名称(必填)',
-  '劳累指数(必填;1=轻松,2=中等,3=高强度)',
-  '所需人数(必填)',
-  '重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)',
-  '时段(必填;自主安排/早/中/晚,分号隔开)',
-  '时间段开始(HH:mm;选填)',
-  '时间段结束(HH:mm;选填)',
-  '任务说明(选填)',
-  '加分标签(选填;分号隔开,可多个)',
-  '启用(选填;1=启用,0=禁用,默认1)',
+  '启用(1=启用,0=禁用,默认1)',
+  '劳累指数(1=轻松,2=中等,3=高强度)',
+  '所需人数',
+  '重复星期(1-7;分号隔开;1=周一…7=周日;空=一次性任务)',
+  '时段(自主安排/早/中/晚,分号隔开)',
+  '时间段开始(HH:mm)',
+  '时间段结束(HH:mm)',
+  '加分标签(分号隔开,可多个)',
+  '任务说明',
 ];
-const STAFF_BASE_COLS = [
+export const STAFF_BASE_COLS = [
   '姓名(必填)',
-  '状态(选填;新入/活跃/休假/已退出,默认活跃)',
-  '可胜任任务(必填;分号隔开)',
-  '擅长任务(选填;任务(原因),分号隔开)',
-  '不合适任务(选填;任务(原因),分号隔开)',
-  '周疲劳上限(选填)',
-  '高强度次数上限(选填)',
-  '月疲劳上限(选填)',
-  '月高强度次数上限(选填)',
-  '标签(选填;分号隔开,可多个)',
-  '每周时间模式(选填;可用/不可用)',
-  '每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)',
+  '状态(新入/活跃/休假/已退出,默认活跃)',
+  '可胜任任务(分号隔开)',
+  '擅长任务(任务(原因),分号隔开)',
+  '不合适任务(任务(原因),分号隔开)',
+  '标签(分号隔开,可多个)',
+  '每周时间模式(可用/不可用)',
+  '每周时间段(周一 全天;周三 09:00-12:00;周日均分号多条)',
+  '周疲劳上限',
+  '月疲劳上限',
+  '周高强度次数上限',
+  '月高强度次数上限',
 ];
-const PROJECT_EXPORT_COLS = ['ID', ...PROJECT_BASE_COLS];
-const STAFF_EXPORT_COLS = ['ID', ...STAFF_BASE_COLS];
+// 导出表头 = 简洁名（无填表说明、无 ID），列序与模板一致；可胜任/擅长/不合适导出为任务中文名（见 buildStaffsAoa）
+const PROJECT_EXPORT_COLS = ['名称', '启用', '劳累指数', '所需人数', '重复星期', '时段', '时间段开始', '时间段结束', '加分标签', '任务说明'];
+const STAFF_EXPORT_COLS = ['姓名', '状态', '可胜任任务', '擅长任务', '不合适任务', '标签', '每周时间模式', '每周时间段', '周疲劳上限', '月疲劳上限', '周高强度次数上限', '月高强度次数上限'];
 
 // 模板示例行：带「【示例】」前缀，导入时自动跳过
-const PROJECT_SAMPLE = ['【示例】场地搬运', '3', '2', '7;1', '早;中', '08:00', '18:00', '搬运物资到三楼，注意轻拿轻放', '组长', '1'];
-const STAFF_SAMPLE = ['【示例】张三', '新入', 'P101;P102', 'P101(体力好,搬运熟练);P102(力气大)', 'P103(腰伤,不搬重物)', '10', '2', '40', '8', '组长;值班', '可用', '周一、周三、周五 09:00-12:00;周日 14:00-18:00'];
+const PROJECT_SAMPLE = ['【示例】场地搬运', '1', '3', '2', '7;1', '早;中', '08:00', '18:00', '组长', '搬运物资到三楼，注意轻拿轻放'];
+const STAFF_SAMPLE = ['【示例】张三', '新入', '场地搬运;门口执勤', '场地搬运(体力好,搬运熟练);门口执勤(力气大)', '夜间巡逻(腰伤,不宜搬重物)', '组长;值班', '可用', '周一、周三、周五 09:00-12:00;周日 14:00-18:00', '10', '40', '2', '8'];
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
 const STATUS_REV = { new: '新入', active: '活跃', rest: '休假', left: '已退出' };
+
+// 上限列解析：空 → undefined（走系统设置默认）；非空数字 → 数值（0 合法：禁排高强度/禁排整月）；非法 → undefined
+function parseNumOrUndef(v) {
+  const t = String(v ?? '').trim();
+  if (t === '') return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 function normalizeStatus(v) {
   const s = String(v ?? '').trim();
@@ -61,6 +76,13 @@ function parsePref(v) {
     const m = seg.match(/^([^()]+)\(([\s\S]*)\)$/);
     return m ? { projectId: m[1].trim(), reason: m[2].trim() } : { projectId: seg, reason: '' };
   }).filter(e => e.projectId);
+}
+
+// 任务引用解析：支持任务 ID 或任务中文名（导出为中文名后，重导入须按名称回解析到 ID；两不识别返回 null）
+function resolveProjectRef(ref, ids, names) {
+  const t = String(ref ?? '').trim();
+  if (ids.has(t)) return t;
+  return names.get(t) ?? null;
 }
 
 function parseSlots(v) {
@@ -138,6 +160,111 @@ export function parseAvailability(modeValue, entriesValue) {
   return entries.length ? { value: { mode, entries } } : { error: '时间段为空' };
 }
 
+// ---- 导出样式层（xlsx-js-style 样式写入；以下为无 DOM 纯函数，node 可测） ----
+
+// 表头：深紫字加粗 + 淡紫底 + 居中（wrapText 兜底超长说明换行）——淡紫色系取自主题 btn-soft（#efe3f6）→ 表头 #E6DCF4 + 主色 #5A1D78
+// 注意：xlsx-js-style 的 border.all 快捷写法不写入 XML，必须显式四边
+const STYLE_HEADER = {
+  font: { bold: true, color: { rgb: '5A1D78' } },
+  fill: { fgColor: { rgb: 'E6DCF4' } },
+  alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+  border: {
+    top: { style: 'thin', color: { rgb: 'C4B5DD' } },
+    bottom: { style: 'thin', color: { rgb: 'C4B5DD' } },
+    left: { style: 'thin', color: { rgb: 'C4B5DD' } },
+    right: { style: 'thin', color: { rgb: 'C4B5DD' } },
+  },
+};
+// 数据行：淡紫灰细分隔线 + 顶对齐 + 自动换行（内容超列宽换行，行高由 estimateRowHeights 撑开）
+const STYLE_CELL = {
+  border: {
+    top: { style: 'thin', color: { rgb: 'E0D9EE' } },
+    bottom: { style: 'thin', color: { rgb: 'E0D9EE' } },
+    left: { style: 'thin', color: { rgb: 'E0D9EE' } },
+    right: { style: 'thin', color: { rgb: 'E0D9EE' } },
+  },
+  alignment: { vertical: 'top', wrapText: true },
+};
+// 估算单元格文本显示宽度：中文/全角按 2，其余按 1（近似 wch 列宽单位）
+function charWidth(v) {
+  let w = 0;
+  for (const ch of String(v ?? '')) w += ch.charCodeAt(0) > 255 ? 2 : 1;
+  return w;
+}
+// 列宽 = 该列最长单元格宽度（含表头）+ 5 边距（留白呼吸感），钳制 14~44（超长列靠 wrapText + 行高；min 14 保证状态/启用等短列不挤）
+function calcColWidths(aoa) {
+  const n = aoa[0].length;
+  return Array.from({ length: n }, (_, c) => Math.min(Math.max(Math.max(...aoa.map(row => charWidth(row[c]))) + 5, 14), 44));
+}
+// 行高（pt）= 各列按列宽折算的 wrap 行数最大值 × 16 + 4 余量；表头/数据统一
+function estimateRowHeights(aoa, colWidths) {
+  return aoa.map(row => {
+    let lines = 1;
+    for (let c = 0; c < aoa[0].length; c++) {
+      const l = Math.max(1, Math.ceil(charWidth(row[c]) / Math.max(colWidths[c], 1)));
+      if (l > lines) lines = l;
+    }
+    return { hpt: lines * 16 + 4 };
+  });
+}
+// aoa → 带样式工作表：表头/数据样式 + 列宽 + 行高 + 自动筛选
+export function buildSheet(aoa) {
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const nCols = aoa[0].length;
+  for (let r = 0; r < aoa.length; r++) {
+    for (let c = 0; c < nCols; c++) {
+      const cell = XLSX.utils.encode_cell({ r, c });
+      if (ws[cell]) ws[cell].s = r === 0 ? STYLE_HEADER : STYLE_CELL;
+    }
+  }
+  const colWidths = calcColWidths(aoa);
+  ws['!cols'] = colWidths.map(w => ({ wch: w }));
+  ws['!rows'] = estimateRowHeights(aoa, colWidths);
+  ws['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(nCols - 1)}${aoa.length}` };
+  return ws;
+}
+
+// 任务导出数据行（含简洁表头，无 ID），列序 = 任务卡片展示顺序
+export function buildProjectsAoa(projects) {
+  return [
+    PROJECT_EXPORT_COLS,
+    ...projects.map(p => [
+      p.name, p.active === false ? 0 : 1, p.fatigueScore, p.requiredCapacity,
+      (p.weekDays ?? []).map(d => d === 0 ? 7 : d).join(';'),
+      (p.slots ?? []).map(s => s.label).join(';'),
+      p.timeRange?.start ?? '', p.timeRange?.end ?? '',
+      (p.bonusTags ?? []).join(';'),
+      p.description ?? '',
+    ]),
+  ];
+}
+// 人员导出数据行（含简洁表头，无 ID），列序 = 人员卡片展示顺序；
+// 可胜任/擅长/不合适 → 任务中文名；任务已删或任务名含括号（防中文名(原因) 再导入解析错）时回退原 ID
+export function buildStaffsAoa(staffs, projects, settings) {
+  const nameOf = new Map(projects.map(p => [p.id, p.name]));
+  const safeName = pid => {
+    const name = nameOf.get(pid);
+    return name && !/[(（]/.test(name) ? name : pid;
+  };
+  const fmtPref = list => (list ?? []).map(p => p.reason ? `${safeName(p.projectId)}(${p.reason})` : safeName(p.projectId)).join(';');
+  return [
+    STAFF_EXPORT_COLS,
+    ...staffs.map(s => {
+      const { mode, entries } = formatAvailability(s.availability);
+      return [
+        s.name, STATUS_REV[s.status] ?? s.status,
+        (s.allowedProjects ?? []).map(safeName).join(';'),
+        fmtPref(s.preferredProjects),
+        fmtPref(s.bannedProjects),
+        (s.tags ?? []).join(';'),
+        mode, entries,
+        s.maxWeeklyFatigue, monthlyFatigueLimitOf(s, settings),
+        s.maxHeavyTaskCount, monthlyHeavyLimitOf(s, settings),
+      ];
+    }),
+  ];
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -147,13 +274,15 @@ export function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-function downloadTemplate(cols, filename, sample) {
-  const aoa = [cols, ...(sample ? [sample] : [])];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+function downloadSheet(aoa, sheetName, filename) {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '模板');
+  XLSX.utils.book_append_sheet(wb, buildSheet(aoa), sheetName);
   const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
   downloadBlob(blob, filename);
+}
+
+function downloadTemplate(cols, filename, sample) {
+  downloadSheet([cols, ...(sample ? [sample] : [])], '模板', filename);
 }
 
 export function downloadProjectTemplate() { downloadTemplate(PROJECT_BASE_COLS, 'Numbers-任务模板.xlsx', PROJECT_SAMPLE); }
@@ -161,68 +290,70 @@ export function downloadStaffTemplate() { downloadTemplate(STAFF_BASE_COLS, 'Num
 
 export async function exportProjects() {
   const { projects } = getCache();
-  const aoa = [PROJECT_EXPORT_COLS, ...projects.map(p => [
-    p.id, p.name, p.fatigueScore, p.requiredCapacity,
-    (p.weekDays ?? []).map(d => d === 0 ? 7 : d).join(';'),
-    (p.slots ?? []).map(s => s.label).join(';'),
-    p.timeRange?.start ?? '', p.timeRange?.end ?? '',
-    p.description ?? '',
-    (p.bonusTags ?? []).join(';'),
-    p.active === false ? 0 : 1,
-  ])];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '任务');
-  const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
-  downloadBlob(blob, 'Numbers-任务表.xlsx');
+  downloadSheet(buildProjectsAoa(projects), '任务', 'Numbers-任务表.xlsx');
 }
 
 export async function exportStaffs() {
-  const { staffs } = getCache();
-  const aoa = [STAFF_EXPORT_COLS, ...staffs.map(s => {
-    const { mode, entries } = formatAvailability(s.availability);
-    return [
-      s.id, s.name, STATUS_REV[s.status] ?? s.status,
-      (s.allowedProjects ?? []).join(';'),
-      (s.preferredProjects ?? []).map(p => p.reason ? `${p.projectId}(${p.reason})` : p.projectId).join(';'),
-      (s.bannedProjects ?? []).map(b => b.reason ? `${b.projectId}(${b.reason})` : b.projectId).join(';'),
-      s.maxWeeklyFatigue, s.maxHeavyTaskCount,
-      monthlyFatigueLimitOf(s, getSettings()), monthlyHeavyLimitOf(s, getSettings()),
-      (s.tags ?? []).join(';'),
-      mode, entries,
-    ];
-  })];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '人员');
-  const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
-  downloadBlob(blob, 'Numbers-人员表.xlsx');
+  const { staffs, projects } = getCache();
+  downloadSheet(buildStaffsAoa(staffs, projects, getSettings()), '人员', 'Numbers-人员表.xlsx');
 }
 
-// 旧表头（改版前已发布文件）键名 → 新表头键名，保证旧导出文件可重导入
+// 表头别名 → 内部标准键：① 新模板表头（只标必填）② 导出简洁表头 ③ 改版前旧表头 均可重导入
 const PROJECT_KEY_ALIAS = {
   '名称': '名称(必填)',
   '劳累指数(1-3)': '劳累指数(必填;1=轻松,2=中等,3=高强度)',
+  '劳累指数': '劳累指数(必填;1=轻松,2=中等,3=高强度)',
+  '劳累指数(1=轻松,2=中等,3=高强度)': '劳累指数(必填;1=轻松,2=中等,3=高强度)',
   '所需人数': '所需人数(必填)',
   '重复星期(0-6)': '重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)',
+  '重复星期': '重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)',
+  '重复星期(1-7;分号隔开;1=周一…7=周日;空=一次性任务)': '重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)',
   '时段(分号隔开)': '时段(必填;自主安排/早/中/晚,分号隔开)',
+  '时段': '时段(必填;自主安排/早/中/晚,分号隔开)',
+  '时段(自主安排/早/中/晚,分号隔开)': '时段(必填;自主安排/早/中/晚,分号隔开)',
   '时间段开始(HH:mm)': '时间段开始(HH:mm;选填)',
+  '时间段开始': '时间段开始(HH:mm;选填)',
   '时间段结束(HH:mm)': '时间段结束(HH:mm;选填)',
+  '时间段结束': '时间段结束(HH:mm;选填)',
+  '任务说明': '任务说明(选填)',
+  '加分标签(分号隔开,可多个)': '加分标签(选填;分号隔开,可多个)',
   '启用(1/0)': '启用(选填;1=启用,0=禁用,默认1)',
+  '启用': '启用(选填;1=启用,0=禁用,默认1)',
+  '启用(1=启用,0=禁用,默认1)': '启用(选填;1=启用,0=禁用,默认1)',
 };
 const STAFF_KEY_ALIAS = {
   '姓名': '姓名(必填)',
   '状态(新入/活跃/休假/已退出)': '状态(选填;新入/活跃/休假/已退出,默认活跃)',
+  '状态': '状态(选填;新入/活跃/休假/已退出,默认活跃)',
+  '状态(新入/活跃/休假/已退出,默认活跃)': '状态(选填;新入/活跃/休假/已退出,默认活跃)',
   '可胜任项目(分号隔开)': '可胜任任务(必填;分号隔开)',
   '可胜任项目(必填;分号隔开)': '可胜任任务(必填;分号隔开)',
+  '可胜任任务': '可胜任任务(必填;分号隔开)',
+  '可胜任任务(分号隔开)': '可胜任任务(必填;分号隔开)',
   '擅长项目(项目(原因);分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
   '擅长项目(选填;项目(原因),分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
+  '擅长任务': '擅长任务(选填;任务(原因),分号隔开)',
+  '擅长任务(任务(原因),分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
   '不合适项目(项目(原因);分号隔开)': '不合适任务(选填;任务(原因),分号隔开)',
   '不合适项目(选填;项目(原因),分号隔开)': '不合适任务(选填;任务(原因),分号隔开)',
+  '不合适任务': '不合适任务(选填;任务(原因),分号隔开)',
+  '不合适任务(任务(原因),分号隔开)': '不合适任务(选填;任务(原因),分号隔开)',
+  '标签(分号隔开,可多个)': '标签(选填;分号隔开,可多个)',
+  '每周时间模式(可用/不可用)': '每周时间模式(选填;可用/不可用)',
+  '每周时间段(周一 全天;周三 09:00-12:00;周日均分号多条)': '每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)',
   '周疲劳上限(默认6)': '周疲劳上限(选填)',
   '周疲劳上限(选填;默认6)': '周疲劳上限(选填)',
+  '周疲劳上限': '周疲劳上限(选填)',
   '高强度次数上限(默认1)': '高强度次数上限(选填)',
   '高强度次数上限(选填;默认1)': '高强度次数上限(选填)',
+  '高强度次数上限': '高强度次数上限(选填)',
+  '周高强度次数上限(选填)': '高强度次数上限(选填)',
+  '周高强度次数上限': '高强度次数上限(选填)',
+  '月疲劳上限': '月疲劳上限(选填)',
+  '月高强度次数上限': '月高强度次数上限(选填)',
+  '标签': '标签(选填;分号隔开,可多个)',
+  '每周时间模式': '每周时间模式(选填;可用/不可用)',
+  '每周时间段': '每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)',
 };
 const normalizeKeys = alias => raw => {
   const r = {};
@@ -279,6 +410,8 @@ export async function importStaffs(file) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false }).map(normalizeKeys(STAFF_KEY_ALIAS));
     const { staffs, projects } = getCache();
     const projectIds = new Set(projects.map(p => p.id));
+    const projectNames = new Map(projects.map(p => [p.name.trim(), p.id]));
+    const resolve = ref => resolveProjectRef(ref, projectIds, projectNames);
     const byName = new Map(staffs.map(s => [s.name.trim(), s]));
     const byId = new Map(staffs.map(s => [s.id, s]));
     let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0;
@@ -290,11 +423,11 @@ export async function importStaffs(file) {
       // 同名或同 ID 覆盖（保留原 ID 与 joinedAt），否则新增；文件内多行同名后者覆盖前者
       const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
       const status = normalizeStatus(r['状态(选填;新入/活跃/休假/已退出,默认活跃)']);
-      // 上限列留空 → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
-      const weeklyN = Number(r['周疲劳上限(选填)']);
-      const heavyN = Number(r['高强度次数上限(选填)']);
-      const monthlyFatigueN = Number(r['月疲劳上限(选填)']);
-      const monthlyHeavyN = Number(r['月高强度次数上限(选填)']);
+      // 上限列解析：空 → undefined → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
+      const weeklyN = parseNumOrUndef(r['周疲劳上限(选填)']);
+      const heavyN = parseNumOrUndef(r['高强度次数上限(选填)']);
+      const monthlyFatigueN = parseNumOrUndef(r['月疲劳上限(选填)']);
+      const monthlyHeavyN = parseNumOrUndef(r['月高强度次数上限(选填)']);
       const avModeRaw = r['每周时间模式(选填;可用/不可用)'];
       const avTimeRaw = r['每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)'];
       let availability;
@@ -310,13 +443,13 @@ export async function importStaffs(file) {
         name,
         status,
         restFrom: status === 'rest' ? 'active' : null,
-        allowedProjects: parseList(r['可胜任任务(必填;分号隔开)']).filter(id => projectIds.has(id)),
-        preferredProjects: parsePref(r['擅长任务(选填;任务(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
-        bannedProjects: parsePref(r['不合适任务(选填;任务(原因),分号隔开)']).filter(e => projectIds.has(e.projectId)),
-        maxWeeklyFatigue: Number.isFinite(weeklyN) ? weeklyN : settings.defaultWeeklyFatigue,
-        maxHeavyTaskCount: Number.isFinite(heavyN) ? heavyN : settings.defaultHeavyTaskCount,
-        maxMonthlyFatigue: Number.isFinite(monthlyFatigueN) ? monthlyFatigueN : settings.defaultMonthlyFatigue,
-        maxMonthlyHeavyCount: Number.isFinite(monthlyHeavyN) ? monthlyHeavyN : settings.defaultMonthlyHeavyCount,
+        allowedProjects: parseList(r['可胜任任务(必填;分号隔开)']).map(resolve).filter(Boolean),
+        preferredProjects: parsePref(r['擅长任务(选填;任务(原因),分号隔开)']).map(e => ({ ...e, projectId: resolve(e.projectId) ?? e.projectId })).filter(e => projectIds.has(e.projectId)),
+        bannedProjects: parsePref(r['不合适任务(选填;任务(原因),分号隔开)']).map(e => ({ ...e, projectId: resolve(e.projectId) ?? e.projectId })).filter(e => projectIds.has(e.projectId)),
+        maxWeeklyFatigue: weeklyN ?? settings.defaultWeeklyFatigue,
+        maxHeavyTaskCount: heavyN ?? settings.defaultHeavyTaskCount,
+        maxMonthlyFatigue: monthlyFatigueN ?? settings.defaultMonthlyFatigue,
+        maxMonthlyHeavyCount: monthlyHeavyN ?? settings.defaultMonthlyHeavyCount,
         tags: parseTags(r['标签(选填;分号隔开,可多个)']),
         availability,
       };

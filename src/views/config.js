@@ -1146,7 +1146,7 @@ function importDialog({ title, handler, template }) {
   tplBtn.onclick = () => { template(); showToast('模板已下载', 'success'); };
   const fileBtn = document.createElement('button');
   fileBtn.type = 'button';
-  fileBtn.className = 'btn btn-primary';
+  fileBtn.className = 'btn btn-soft'; // 淡紫底深紫字（btn-soft）
   fileBtn.innerHTML = `${ICON_UPLOAD}<span>选择文件导入</span>`;
   row.append(tplBtn, fileBtn);
   body.append(tip, row);

@@ -40,7 +40,7 @@ Intelligent-Scheduling/
 | | `timepicker.js` | 时间选择器：createTimePicker 点击整个框弹时/分双列面板（小时 00-23、分钟 00-59，选分钟自动收起），el.value 返回 'HH:mm' 或 '' | theme |
 | | `modal.js` | 弹窗（openModal 单点收口：遮罩点击不关、ESC/右上 X 关；**弹窗栈**嵌套 ESC 只关顶层；footer 惯例=次钮左/主钮右；**confirmDialog** 破坏性操作二次确认弹窗，box-confirm 窄宽） | theme |
 | | `dnd.js` | 拖拽封装 | 无 |
-| | `excel.js` | Excel 导入导出（SheetJS） | data/model |
+| | `excel.js` | Excel 导入导出（xlsx-js-style fork，09-09 替换官方 SheetJS：导出表头深紫字淡紫底/边框/换行/列宽留白/筛选，列序=配置页卡片展示顺序；任务引用导出中文名、导入按 ID/名称双向解析） | data/model |
 | | `exportImage.js` | 排班图导出 PNG（周/月通用 exportScheduleImage；html2canvas 离屏克隆：固定 1200px 宽/标题区，克隆去交互 UI、解 overflow 防裁）+ 任务说明图导出 | excel(下载) |
 | | `toast.js` | 提示 | theme |
 | `main.js` | — | 入口装配三视图+导航 | views/* |
