@@ -2,7 +2,7 @@
 // CJS/ESM interop：node 原生 ESM 取 .default，Vite/esbuild 直接映射 namespace，统一取有效对象
 import * as XLSX_NS from 'xlsx-js-style';
 const XLSX = XLSX_NS.default ?? XLSX_NS;
-import { createProject, createStaff, isValidTimeRange, reconcileStaff, parseTags, SLOT_LABELS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
+import { createProject, createStaff, isValidTimeRange, reconcileStaff, parseTags, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { getCache, saveProject, saveStaff, getSettings } from '../data/store.js';
 
 // 表头列顺序 = 编辑弹窗字段顺序。模板（下载填写）与导出（存档/迁移）均无 ID 列、重导入按名称匹配；
@@ -54,10 +54,22 @@ function parseNumOrUndef(v) {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// 数值域收紧（2026-09-09 Tao 拍板：越界落默认）：空 → {v:null}（上层走默认，不计数）；越界/非数 → {v:null, fixed:true}（落默认并报数）；合法 → {v:n}
+function normIn(v, min, max, { integer = false } = {}) {
+  const s = String(v ?? '').trim();
+  if (s === '') return { v: null, fixed: false };
+  const n = Number(s);
+  return Number.isFinite(n) && n >= min && n <= max && (!integer || Number.isInteger(n))
+    ? { v: n, fixed: false }
+    : { v: null, fixed: true };
+}
+
+// 状态白名单收紧（2026-09-09 Tao 拍板：不在可选里落默认活跃）：别名表 + new/active/rest/left（英文忽略大小写）之外一律 'active'
 function normalizeStatus(v) {
   const s = String(v ?? '').trim();
   if (STATUS_ALIAS[s]) return STATUS_ALIAS[s];
-  return s || 'active';
+  const lower = s.toLowerCase();
+  return STAFF_STATUSES.includes(lower) ? lower : 'active';
 }
 
 // 全角 → 半角，兼容用户输入的中文标点
@@ -370,15 +382,21 @@ export async function importProjects(file) {
     const tagPool = new Set(staffs.flatMap(s => s.tags ?? []));
     const byName = new Map(projects.map(p => [p.name.trim(), p]));
     const byId = new Map(projects.map(p => [p.id, p]));
-    let added = 0, updated = 0, skipped = 0, droppedTags = 0;
+    let added = 0, updated = 0, skipped = 0, droppedTags = 0, fixedNums = 0;
+    const seenIds = new Set();
     for (const r of rows) {
       if (String(r['名称(必填)'] ?? '').startsWith('【示例】')) continue;
       const name = String(r['名称(必填)'] ?? '').trim();
       if (!name) { skipped++; continue; }
+      // 数值域收紧：空 → 默认 1；劳累指数超出 1-3、所需人数非正整数 → 越界落默认 1 并计数
+      const f = normIn(r['劳累指数(必填;1=轻松,2=中等,3=高强度)'], 1, FATIGUE_MAX);
+      const c = normIn(r['所需人数(必填)'], 1, Infinity, { integer: true });
+      if (f.fixed) fixedNums++;
+      if (c.fixed) fixedNums++;
       const fields = {
         name,
-        fatigueScore: Number(r['劳累指数(必填;1=轻松,2=中等,3=高强度)']) || 1,
-        requiredCapacity: Number(r['所需人数(必填)']) || 1,
+        fatigueScore: f.v ?? 1,
+        requiredCapacity: c.v ?? 1,
         weekDays: parseWeekDays(r['重复星期(选填;1-7;分号隔开;1=周一…7=周日;空=一次性任务)']),
         slots: parseSlots(r['时段(必填;自主安排/早/中/晚,分号隔开)']),
         timeRange: parseTimeRange(r['时间段开始(HH:mm;选填)'], r['时间段结束(HH:mm;选填)']),
@@ -388,16 +406,16 @@ export async function importProjects(file) {
           if (!known) droppedTags++;
           return known;
         }),
-        active: String(r['启用(选填;1=启用,0=禁用,默认1)'] ?? '1') !== '0',
+        active: String(r['启用(选填;1=启用,0=禁用,默认1)'] ?? '1').trim() !== '0', // 值先 trim：' 0 ' 视为 0
       };
-      // 同名或同 ID 覆盖（保留原 ID 保引用），否则新增；文件内多行同名后者覆盖前者
+      // 同名或同 ID 覆盖（保留原 ID 保引用），否则新增；文件内多行同名后者覆盖前者（同 id 只计一次）
       const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
       const rec = existing ? createProject({ ...fields, id: existing.id }) : createProject(fields);
       await saveProject(rec);
       byName.set(name, rec);
-      existing ? updated++ : added++;
+      if (!seenIds.has(rec.id)) { seenIds.add(rec.id); existing ? updated++ : added++; }
     }
-    return { ok: true, message: `导入 ${added + updated} 个任务${skipped ? `（跳过 ${skipped} 条空名称）` : ''}：新增 ${added}、更新 ${updated}${droppedTags ? `，丢弃 ${droppedTags} 个不存在的加分标签` : ''}` };
+    return { ok: true, message: `导入 ${added + updated} 个任务${skipped ? `（跳过 ${skipped} 条空名称）` : ''}：新增 ${added}、更新 ${updated}${fixedNums ? `，${fixedNums} 处劳累/人数超出范围已按默认` : ''}${droppedTags ? `，丢弃 ${droppedTags} 个不存在的加分标签` : ''}` };
   } catch (e) {
     return { ok: false, message: `任务导入失败：${e.message}` };
   }
@@ -414,7 +432,8 @@ export async function importStaffs(file) {
     const resolve = ref => resolveProjectRef(ref, projectIds, projectNames);
     const byName = new Map(staffs.map(s => [s.name.trim(), s]));
     const byId = new Map(staffs.map(s => [s.id, s]));
-    let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0;
+    let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0, droppedRefs = 0, statusFixed = 0, limitFixed = 0;
+    const seenIds = new Set();
     const settings = getSettings();
     for (const r of rows) {
       if (String(r['姓名(必填)'] ?? '').startsWith('【示例】')) continue;
@@ -422,12 +441,6 @@ export async function importStaffs(file) {
       if (!name) { skipped++; continue; }
       // 同名或同 ID 覆盖（保留原 ID 与 joinedAt），否则新增；文件内多行同名后者覆盖前者
       const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
-      const status = normalizeStatus(r['状态(选填;新入/活跃/休假/已退出,默认活跃)']);
-      // 上限列解析：空 → undefined → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底
-      const weeklyN = parseNumOrUndef(r['周疲劳上限(选填)']);
-      const heavyN = parseNumOrUndef(r['高强度次数上限(选填)']);
-      const monthlyFatigueN = parseNumOrUndef(r['月疲劳上限(选填)']);
-      const monthlyHeavyN = parseNumOrUndef(r['月高强度次数上限(选填)']);
       const avModeRaw = r['每周时间模式(选填;可用/不可用)'];
       const avTimeRaw = r['每周时间段(选填;周一 全天;周三 09:00-12:00;周日均分号多条)'];
       let availability;
@@ -439,17 +452,53 @@ export async function importStaffs(file) {
         if (parsed.error) { skippedAvailability++; continue; }
         availability = parsed.value;
       }
+      // —— 以下对该行计数才有效（availability 非法行已 continue）——
+      // 状态白名单：别名表 + new/active/rest/left 之外一律落默认活跃并计数
+      const statusRaw = String(r['状态(选填;新入/活跃/休假/已退出,默认活跃)'] ?? '').trim();
+      const statusUnknown = statusRaw !== '' && !STATUS_ALIAS[statusRaw] && !STAFF_STATUSES.includes(statusRaw.toLowerCase());
+      if (statusUnknown) statusFixed++;
+      const status = normalizeStatus(statusRaw);
+      // 上限列解析：空 → undefined → 取「设置」里的人员默认上限；高强度次数上限允许填 0（禁用高强度），不能 || 兜底；负值越界 → 落默认并计数
+      const lims = {
+        weekly: parseNumOrUndef(r['周疲劳上限(选填)']),
+        heavy: parseNumOrUndef(r['高强度次数上限(选填)']),
+        mf: parseNumOrUndef(r['月疲劳上限(选填)']),
+        mh: parseNumOrUndef(r['月高强度次数上限(选填)']),
+      };
+      for (const k of ['weekly', 'heavy', 'mf', 'mh']) {
+        if (lims[k] !== undefined && lims[k] < 0) { limitFixed++; lims[k] = undefined; }
+      }
+      // 三列表解析：任务引用（ID/中文名）解析失败改为计数提示（对齐加分标签的「丢弃 N」）
+      const allowedProjects = [];
+      for (const ref of parseList(r['可胜任任务(必填;分号隔开)'])) {
+        const id = resolve(ref);
+        if (id) allowedProjects.push(id); else droppedRefs++;
+      }
+      const preferredProjects = [];
+      for (const e of parsePref(r['擅长任务(选填;任务(原因),分号隔开)'])) {
+        const id = resolve(e.projectId);
+        if (id) preferredProjects.push({ projectId: id, reason: e.reason }); else droppedRefs++;
+      }
+      const bannedProjects = [];
+      for (const e of parsePref(r['不合适任务(选填;任务(原因),分号隔开)'])) {
+        const id = resolve(e.projectId);
+        if (id) bannedProjects.push({ projectId: id, reason: e.reason }); else droppedRefs++;
+      }
       const fields = {
         name,
         status,
-        restFrom: status === 'rest' ? 'active' : null,
-        allowedProjects: parseList(r['可胜任任务(必填;分号隔开)']).map(resolve).filter(Boolean),
-        preferredProjects: parsePref(r['擅长任务(选填;任务(原因),分号隔开)']).map(e => ({ ...e, projectId: resolve(e.projectId) ?? e.projectId })).filter(e => projectIds.has(e.projectId)),
-        bannedProjects: parsePref(r['不合适任务(选填;任务(原因),分号隔开)']).map(e => ({ ...e, projectId: resolve(e.projectId) ?? e.projectId })).filter(e => projectIds.has(e.projectId)),
-        maxWeeklyFatigue: weeklyN ?? settings.defaultWeeklyFatigue,
-        maxHeavyTaskCount: heavyN ?? settings.defaultHeavyTaskCount,
-        maxMonthlyFatigue: monthlyFatigueN ?? settings.defaultMonthlyFatigue,
-        maxMonthlyHeavyCount: monthlyHeavyN ?? settings.defaultMonthlyHeavyCount,
+        // 休假恢复前态：更新且原为 new/active → 保留该前态（不再硬编码 active）；原已 rest → 沿用其前态；其余默认 active
+        restFrom: status === 'rest'
+          ? (existing && ['new', 'active'].includes(existing.status) ? existing.status
+            : existing?.status === 'rest' ? (existing.restFrom ?? 'active') : 'active')
+          : null,
+        allowedProjects,
+        preferredProjects,
+        bannedProjects,
+        maxWeeklyFatigue: lims.weekly ?? settings.defaultWeeklyFatigue,
+        maxHeavyTaskCount: lims.heavy ?? settings.defaultHeavyTaskCount,
+        maxMonthlyFatigue: lims.mf ?? settings.defaultMonthlyFatigue,
+        maxMonthlyHeavyCount: lims.mh ?? settings.defaultMonthlyHeavyCount,
         tags: parseTags(r['标签(选填;分号隔开,可多个)']),
         availability,
       };
@@ -463,11 +512,14 @@ export async function importStaffs(file) {
         : createStaff(fields);
       await saveStaff(rec);
       byName.set(name, rec);
-      existing ? updated++ : added++;
+      if (!seenIds.has(rec.id)) { seenIds.add(rec.id); existing ? updated++ : added++; }
     }
     const fixNote = reconciled ? `（${reconciled} 名含矛盾配置，已按不合适优先自动修正）` : '';
+    const refsNote = droppedRefs ? `，丢弃 ${droppedRefs} 个不存在的任务引用` : '';
+    const statusNote = statusFixed ? `，${statusFixed} 名状态无法识别已按活跃` : '';
+    const limitNote = limitFixed ? `，${limitFixed} 处上限为负已按默认` : '';
     const availNote = skippedAvailability ? `，跳过 ${skippedAvailability} 条时间安排配置错误` : '';
-    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}${availNote}` };
+    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}${refsNote}${statusNote}${limitNote}${availNote}` };
   } catch (e) {
     return { ok: false, message: `人员导入失败：${e.message}` };
   }
