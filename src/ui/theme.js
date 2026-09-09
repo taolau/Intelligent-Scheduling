@@ -520,15 +520,14 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cal-slot-card .sch-card:hover { box-shadow:0 2px 6px rgba(90,29,120,.12); transform:translateY(-1px); }
 .cal-slot-card .sch-card.short { border-color:#fed7aa; background:#fff7ed; }
 .cal-slot-card .sch-card.full { border-color:#bbf7d0; background:#f0fdf4; }
-.sch-title { font-weight:600; font-size:12px; color:#5a1d78;
-  letter-spacing:.2px; line-height:1.35;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sch-title { display:flex; align-items:center; gap:5px; font-weight:600; font-size:12px; color:#5a1d78;
+  letter-spacing:.2px; line-height:1.35; min-width:0; }
+.sch-title-txt { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sch-meta { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#6a6178; }
 .sch-time { color:#9b91a7; font-size:10px; }
-/* 劳累指数橙底胶囊：排班卡 meta / 当日弹窗 / 任务卡侧边统一。padding 1px 使总高=火高+2，不撑高卡片 */
-.fire-badge { flex:none; display:inline-flex; align-items:center; gap:2px;
-  padding:1px 7px; border-radius:999px; background:#fef1e7; }
-.fire-badge svg { display:block; }
+/* 劳累指数强度刻度角标：斜切格亮 N 格=劳累指数（1-3），档位色阶，排班卡 title 行右端/当日弹窗/任务说明图同款 */
+.int-mark { flex:none; display:inline-flex; align-items:center; }
+.int-mark svg { display:block; height:5px; width:auto; }
 .sch-staff { display:flex; flex-wrap:wrap; }
 .sch-capacity { font-size:11px; color:#d97706; font-weight:500; }
 .sch-capacity.ok { color:#16a34a; }
@@ -572,6 +571,7 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cfg-card-title { font-size:15px; font-weight:600; color:#241f2e; word-break:break-all; }
 .cfg-card-rows { display:flex; flex-direction:column; gap:7px; font-size:13px; }
 .cfg-row { display:flex; align-items:flex-start; gap:8px; }
+.cfg-row.cfg-vcenter { align-items:center; } /* 图形值行（劳累指数刻度等高矮内容）：垂直居中于文本行高，不贴顶 */
 .cfg-row .k { flex-shrink:0; min-width:5.5em; color:#6a6178; }
 .cfg-row .v { display:flex; flex-wrap:wrap; gap:4px; min-width:0; align-items:center; }
 .cfg-row.cfg-duo { flex-wrap:wrap; row-gap:2px; } /* 人员卡两上限并排一行（周+月） */

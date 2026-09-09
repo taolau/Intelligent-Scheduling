@@ -9,7 +9,7 @@ import { importProjects, importStaffs, exportProjects, exportStaffs, downloadPro
 import { exportTaskViewImage } from '../ui/exportImage.js';
 import { toDateStr } from '../core/week.js';
 import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
-import { ICON_FIRE, ICON_CLOCK } from '../ui/icons.js';
+import { intensityMark, ICON_CLOCK } from '../ui/icons.js';
 
 function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -758,7 +758,7 @@ async function renderProjects(head, scroll) {
         ${activeBadge(p.active)}
       </div>
       <div class="cfg-card-rows">
-        <div class="cfg-row"><span class="k">劳累指数</span><span class="v"><span class="fire-badge">${ICON_FIRE.repeat(p.fatigueScore)}</span></span></div>
+        <div class="cfg-row cfg-vcenter"><span class="k">劳累指数</span><span class="v"><span class="int-mark" title="劳累指数 ${p.fatigueScore}/3">${intensityMark(p.fatigueScore, 12)}</span></span></div>
         <div class="cfg-row"><span class="k">所需人数</span><span class="v">${p.requiredCapacity} 人</span></div>
         <div class="cfg-row"><span class="k">重复星期</span><span class="v">${week}</span></div>
         <div class="cfg-row"><span class="k">时段</span><span class="v">${slots}</span></div>
@@ -868,7 +868,7 @@ function buildTaskViewItem(p) {
   name.textContent = p.name;
   const side = document.createElement('div');
   side.className = 'tview-side';
-  side.innerHTML = `<span class="fire-badge">${ICON_FIRE.repeat(p.fatigueScore)}</span><span>${p.requiredCapacity} 人</span>`;
+  side.innerHTML = `<span class="int-mark" title="劳累指数 ${p.fatigueScore}/3">${intensityMark(p.fatigueScore)}</span><span>${p.requiredCapacity} 人</span>`;
   top.append(name, side);
   const time = document.createElement('div');
   time.className = 'tview-time';

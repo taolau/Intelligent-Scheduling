@@ -13,7 +13,7 @@ import { enableDrag, enableDrop } from '../ui/dnd.js';
 import { exportScheduleImage, exportTaskViewImage } from '../ui/exportImage.js';
 import { createSelect } from '../ui/select.js';
 import { field, setError } from '../ui/fields.js';
-import { ICON_FIRE } from '../ui/icons.js';
+import { intensityMark } from '../ui/icons.js';
 
 let currentWeekStart = getWeekStart(todayStr());
 let timeScale = 'week'; // 'week' 单周 | 'month' 自然月（月锚 monthAnchor = 'YYYY-MM'）
@@ -508,11 +508,11 @@ function buildDayItem(sch, projectById, staffById) {
   name.textContent = p ? p.name : sch.projectId;
   top.appendChild(name);
   if (p) {
-    const fire = document.createElement('span');
-    fire.className = 'fire-badge';
-    fire.title = `劳累指数 ${p.fatigueScore}/3`;
-    fire.innerHTML = ICON_FIRE.repeat(p.fatigueScore);
-    top.appendChild(fire);
+    const mark = document.createElement('span');
+    mark.className = 'int-mark';
+    mark.title = `劳累指数 ${p.fatigueScore}/3`;
+    mark.innerHTML = intensityMark(p.fatigueScore);
+    top.appendChild(mark);
   }
   item.appendChild(top);
 
@@ -631,25 +631,28 @@ function renderScheduleCard(sch, readOnly = false) {
   }
 
   const title = document.createElement('div');
-  title.textContent = `${project?.name ?? sch.projectId}`;
   title.className = 'sch-title';
-  title.title = `${project?.name ?? sch.projectId}`; // 省略号截断后 hover 看全名
+  const nameTxt = document.createElement('span');
+  nameTxt.className = 'sch-title-txt';
+  nameTxt.textContent = `${project?.name ?? sch.projectId}`;
+  nameTxt.title = `${project?.name ?? sch.projectId}`; // 省略号截断后 hover 看全名
+  title.appendChild(nameTxt);
+  if (project && !batchDeleteActive) { // 劳累指数角标：title 行右端；批量删除态右上让位给勾选圆点
+    const mark = document.createElement('span');
+    mark.className = 'int-mark';
+    mark.title = `劳累指数 ${project.fatigueScore}/3`;
+    mark.innerHTML = intensityMark(project.fatigueScore);
+    title.appendChild(mark);
+  }
   card.appendChild(title);
 
   const meta = document.createElement('div');
   meta.className = 'sch-meta';
-  if (project) {
-    if (project.timeRange) {
-      const time = document.createElement('span');
-      time.className = 'sch-time';
-      time.textContent = `${project.timeRange.start}–${project.timeRange.end}`;
-      meta.appendChild(time);
-    }
-    const badge = document.createElement('span');
-    badge.className = 'fire-badge';
-    badge.innerHTML = ICON_FIRE.repeat(project.fatigueScore);
-    badge.title = `劳累指数 ${project.fatigueScore}/3`;
-    meta.appendChild(badge);
+  if (project && project.timeRange) {
+    const time = document.createElement('span');
+    time.className = 'sch-time';
+    time.textContent = `${project.timeRange.start}–${project.timeRange.end}`;
+    meta.appendChild(time);
   }
   card.appendChild(meta);
 
@@ -848,7 +851,7 @@ function scheduleDialog(sch) {
     head.className = 'asg-head';
     const titleRow = document.createElement('div');
     titleRow.className = 'asg-title';
-    titleRow.innerHTML = `<span>${project?.name ?? draft.projectId}</span>${project ? `<span class="fire-badge">${ICON_FIRE.repeat(project.fatigueScore)}</span>` : ''}`;
+    titleRow.innerHTML = `<span>${project?.name ?? draft.projectId}</span>${project ? `<span class="int-mark" title="劳累指数 ${project.fatigueScore}/3">${intensityMark(project.fatigueScore)}</span>` : ''}`;
     const sub = document.createElement('div');
     sub.className = 'asg-sub';
     sub.innerHTML = `${draft.date} · ${draft.slotLabel}${project?.timeRange ? ` · ${project.timeRange.start}–${project.timeRange.end}` : ''}`;
