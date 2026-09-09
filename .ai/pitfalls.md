@@ -308,3 +308,19 @@
 - **根因**：HMR 更新的是 JS 模块，而 CSS 已在启动时以字符串形态写进 DOM `<style>`；模块再更新不会重跑 inject → 新增选择器缺位，computed 样式维持旧值。代码/选择器无错，纯粹是"规则没被浏览器加载"
 - **解决**：改 theme.js 后**整页刷新**再验；排查"样式没生效"先确认规则真在：`[...document.querySelectorAll('style')].some(s => s.textContent.includes('选择器'))`，或用 `getComputedStyle(el).flex` 看实际计算值——规则不在就刷页，别先怀疑 CSS 语法/特异性（与 #36「声明数值勿信代码」互补）
 - **启示**：凡是"样式在启动时一次性注入 DOM"的方案（theme.js 单点注入内联），dev 改样式的验证 = 整页刷新 + 计算样式实测；「改了没效果」先分清是规则没加载还是被覆盖，再动选择器
+
+## 38. flex 行 align-items:flex-start 内嵌矮图形会贴行顶不居中：图形值行需行级 align-items:center
+
+- **报错**：任务配置卡「劳累指数」行刻度（12px 高）在 16px 文本行内视觉偏上、上下留白不对称（上 0 下 4px）
+- **场景**：`.cfg-row { display:flex; align-items:flex-start }`（标签顶对齐、值可换行）内嵌图形值（svg 刻度/小图标）；行高由 k 文本（13px 字号、16px 行高）撑起，而值容器 `.v` 高 = 内容高（12px）→ 整列 flex-start 贴行顶 → 图形顶对齐、底部空出文本行高差
+- **根因**：行高 ≠ 内容高的「矮内容」在 align-items:flex-start 行内天然贴顶；纯文本行内容自己撑满行高看不出问题，只有嵌矮图形/图标的行暴露（刻度/徽章比文本行矮时必现）
+- **解决**：该行加 `align-items:center` 修饰类（本次 `.cfg-row.cfg-vcenter`）——行高不变（仍由 k 文本撑），图形垂直居中于整行；**勿全局改 align-items**（多行文本/换行值依赖顶对齐），只加在图形值行
+- **启示**：「标签-值」行内嵌图形时先问图形高 vs 行高是否接近——矮图形（图标/刻度/徽章）默认贴顶，需行级 center 修饰；与 #26（flex 内图标+文本混排 align 错位）同族，排查「图形位置歪」先看容器 align-items 取值
+
+## 39. 给同步渲染函数包 async 外壳时，await 会把渲染推迟到 microtask——调用方「调用后立即读 DOM」的同步假设静默破碎
+
+- **报错**：点「批量删除」进入多选态，界面闪一下又退出、偶发误弹「当前视图没有可删除的班次」toast，滚动位置也时对时错
+- **场景**：给 `renderCalendar` 包「捕获滚动 → 重建 → 恢复」外壳时写成 `await renderCalendarInner(...)`。inner 内部其实**没有任何 await**，本来调用即同步渲染完成；外壳的 await 让 inner 整体推迟到 microtask 执行
+- **根因**：`delBatchBtn.onclick` 里 `renderCalendar(keepBatch)` 之后**同步**执行 `document.querySelectorAll('.cal-slot-card .sch-card.selectable')` 判断「当前视图是否无可删班次」——原代码里渲染同步完成、读到的是新 DOM；外壳加 await 后读取发生在 inner 执行**之前**，读到旧 DOM（旧卡无 selectable class）→ 误判空 → `exitBatchState()` + 二次 renderCalendar + 误导 toast。同一竞态下两次渲染交错还造成滚动捕获中间态错乱（读到 0/2680 不稳定值）
+- **解决**：inner 内部无 await 时外壳**同步调用**（不 await，try/finally 仍保 restore）。wrapper 的 capture 与 restore 都同步、inner 同步 → 与原调用时序完全一致
+- **启示**：把同步渲染函数拆成 async 壳时先 grep 调用方是否有「renderXxx(...) 后同步读/查 DOM」的路径；async 函数的语义是「首个 await 前的代码同步执行、之后全进 microtask」——inner 不含 await 就同步调，别习惯性写 await。连带启示：修改主渲染路径后，验证清单要含「渲染函数调用点后紧跟 DOM 查询」的入口（本项目 = 批量删除入口的 selectable 检查）
