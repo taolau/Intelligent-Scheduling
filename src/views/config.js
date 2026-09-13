@@ -8,7 +8,7 @@ import { KEYS } from '../data/keys.js';
 import { importProjects, importStaffs, exportProjects, exportStaffs, downloadProjectTemplate, downloadStaffTemplate } from '../ui/excel.js';
 import { exportTaskViewImage } from '../ui/exportImage.js';
 import { toDateStr } from '../core/week.js';
-import { createProject, createStaff, validateProject, validateStaff, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
+import { createProject, createStaff, validateProject, validateStaff, allStaffPush, stripProjectRefs, SLOT_LABELS, STAFF_STATUSES, FATIGUE_MAX, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../data/model.js';
 import { intensityMark, ICON_CLOCK } from '../ui/icons.js';
 
 function esc(v) {
@@ -21,6 +21,7 @@ const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>';
 const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+const ICON_USERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
 const ICON_QUESTION = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 0 1 5.4.6c0 1.8-2.7 2.3-2.7 3.9"/><path d="M12 17h.01"/></svg>';
 const ICON_VIEW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M19 12H5m0 0l6 6m-6-6l6-6"/></svg>';
@@ -206,23 +207,24 @@ async function delStaffDo(s) {
   renderConfig(document.querySelector('#view'));
 }
 
-// 引用保护：任务被排班记录或人员配置引用时禁止删除
+// 引用保护：仅排班记录拦删除（历史排班不该因删任务被破坏）；人员配置引用不拦——删除时自动摘掉
 function delProjectGuard(p) {
-  const { schedules, staffs } = getCache();
+  const { schedules } = getCache();
   const nSch = schedules.filter(s => s.projectId === p.id).length;
-  const nRef = staffs.filter(s =>
-    s.allowedProjects.includes(p.id)
-    || s.preferredProjects.some(x => x.projectId === p.id)
-    || s.bannedProjects.some(x => x.projectId === p.id)).length;
-  if (nSch || nRef) {
-    const parts = [nSch ? `${nSch} 条排班记录` : '', nRef ? `${nRef} 名人员的配置` : ''].filter(Boolean).join('、');
-    showToast(`「${p.name}」正被 ${parts} 引用，删除会破坏数据——可改为「停用」`, 'error');
+  if (nSch) {
+    showToast(`「${p.name}」已被 ${nSch} 条排班记录引用，删除会破坏历史排班——可改为「停用」`, 'error');
     return false;
   }
   return true;
 }
 
+// 该任务在人员三列表里的被引用人数（删除前提示用）
+function countProjectRefs(p) {
+  return stripProjectRefs(getCache().staffs, p.id).length;
+}
+
 async function delProjectDo(p) {
+  for (const s of stripProjectRefs(getCache().staffs, p.id)) await saveStaff(s);
   await removeProject(p.id);
   showToast(`已删除「${p.name}」`, 'success');
   renderConfig(document.querySelector('#view'));
@@ -824,6 +826,7 @@ async function renderProjects(head, scroll) {
           </span>
         </label>
         <div class="cfg-op-btns">
+          <button type="button" data-allstaff class="btn btn-ghost btn-sm" title="把本任务加给所有还没有它的未退出人员（新加入的人员可再点一次）">${ICON_USERS}加到全员</button>
           <button type="button" data-del class="btn btn-del btn-sm">${ICON_TRASH}删除</button>
           <button type="button" data-edit class="btn btn-ghost btn-sm">${ICON_EDIT}编辑</button>
         </div>
@@ -837,12 +840,16 @@ async function renderProjects(head, scroll) {
       if (labelEl) labelEl.textContent = on ? '启用' : '停用';
       showToast(on ? '任务已启用' : '任务已停用', 'success');
     };
+    card.querySelector('[data-allstaff]').onclick = () => applyAllStaff(p);
     card.querySelector('[data-edit]').onclick = () => editProjectDialog(p);
-    card.querySelector('[data-del]').onclick = askDelete({
-      guard: () => delProjectGuard(p),
-      message: `确认删除任务「${p.name}」？删除后不可恢复。`,
-      doDelete: () => delProjectDo(p),
-    });
+    card.querySelector('[data-del]').onclick = () => {
+      if (!delProjectGuard(p)) return;
+      const n = countProjectRefs(p);
+      confirmDialog({
+        message: `确认删除任务「${p.name}」？${n ? `已加给 ${n} 名人员，会同时从他们的「可胜任/擅长/不合适」中移出；` : ''}历史排班记录不受影响。`,
+        onConfirm: () => delProjectDo(p),
+      });
+    };
     grid.appendChild(card);
   }
   scroll.appendChild(wrapPanel(grid));
@@ -949,6 +956,14 @@ function taskViewTimeHTML(p) {
   const body = chips + (chips && text ? '<span class="tview-ddot"> · </span>' : '') + text;
   if (!body) return '';
   return body;
+}
+
+// 「加到全员」＝实时比对后把任务加给还没有它的未退出人员（model.allStaffPush），个人「不合适」跳过。
+// 纯动作、无状态：不记标记、不改按钮文案，反复点只为把之后新加入的人补上。
+async function applyAllStaff(p) {
+  const changed = allStaffPush(getCache().staffs, p.id);
+  for (const s of changed) await saveStaff(s);
+  showToast(changed.length ? `已把「${p.name}」加给 ${changed.length} 人` : `所有人都已可胜任「${p.name}」，无需添加`, 'success');
 }
 
 async function editProjectDialog(project) {

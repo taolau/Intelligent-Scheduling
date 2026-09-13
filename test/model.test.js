@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject, createStaff, createSchedule,
-         validateProject, validateStaff, reconcileStaff, parseTags, formatTags, availabilityProblem,
+         validateProject, validateStaff, reconcileStaff, allStaffPush, stripProjectRefs, parseTags, formatTags, availabilityProblem,
          SLOT_LABELS, DEFAULT_SETTINGS, monthlyFatigueLimitOf, monthlyHeavyLimitOf } from '../src/data/model.js';
 
 test('validateProject: 空名称拒绝', () => {
@@ -364,4 +364,48 @@ test('validateStaff: availability 非法时报错', () => {
   const r = validateStaff(s);
   assert.equal(r.valid, false);
   assert.ok(r.errors.some(e => e.field === 'availability'));
+});
+
+test('allStaffPush：加进所有未退出人员的可胜任，跳过已退出者与对本任务有禁忌者；重复点无变更', () => {
+  const staffs = [
+    createStaff({ id: 'S1', name: '张三', allowedProjects: ['P102'] }),
+    createStaff({ id: 'S2', name: '李四' }),
+    createStaff({ id: 'S3', name: '王五', status: 'left' }),
+    createStaff({ id: 'S4', name: '赵六', bannedProjects: [{ projectId: 'P101', reason: '腰伤' }] }),
+    createStaff({ id: 'S5', name: '钱七', status: 'rest' }),
+    createStaff({ id: 'S6', name: '孙八', allowedProjects: ['P101'] }), // 已有 → 不重复写
+  ];
+  const out = allStaffPush(staffs, 'P101');
+  assert.deepEqual(out.map(s => s.id), ['S1', 'S2', 'S5']); // left 跳过、禁忌跳过、已有跳过
+  assert.deepEqual(out[0].allowedProjects, ['P102', 'P101']);
+  assert.deepEqual(out[1].allowedProjects, ['P101']);
+  assert.deepEqual(out[2].allowedProjects, ['P101']); // 休假中也拿到可胜任（返岗后即可排）
+  assert.deepEqual(staffs[0].allowedProjects, ['P102']); // 入参不被改动
+  // 补推：全员已有 → 无变更可落盘
+  const after = staffs.map(s => out.find(o => o.id === s.id) ?? s);
+  assert.deepEqual(allStaffPush(after, 'P101'), []);
+});
+
+test('stripProjectRefs：删除任务时从三列表摘掉引用（可胜任/擅长/不合适），已退出人员同样清理', () => {
+  const staffs = [
+    createStaff({ id: 'S1', name: '张三', allowedProjects: ['P101', 'P102'] }),
+    createStaff({ id: 'S2', name: '李四', preferredProjects: [{ projectId: 'P101', reason: '擅长' }], allowedProjects: ['P101'] }),
+    createStaff({ id: 'S3', name: '王五', bannedProjects: [{ projectId: 'P101', reason: '腰伤' }] }),
+    createStaff({ id: 'S4', name: '赵六', allowedProjects: ['P102'] }), // 无引用 → 不返回
+    createStaff({ id: 'S5', name: '钱七', status: 'left', allowedProjects: ['P101'] }), // 退出人员也清（不留悬空 ID）
+  ];
+  const out = stripProjectRefs(staffs, 'P101');
+  assert.deepEqual(out.map(s => s.id), ['S1', 'S2', 'S3', 'S5']);
+  assert.deepEqual(out[0].allowedProjects, ['P102']);
+  assert.deepEqual(out[1].preferredProjects, []);
+  assert.deepEqual(out[1].allowedProjects, []);
+  assert.deepEqual(out[2].bannedProjects, []);
+  assert.deepEqual(staffs[0].allowedProjects, ['P101', 'P102']); // 入参不被改动
+  assert.deepEqual(stripProjectRefs([createStaff({ name: '无引用' })], 'P101'), []);
+});
+
+test('allStaffPush / stripProjectRefs：存量人员缺三列表字段不崩', () => {
+  const legacy = { id: 'S9', name: '老数据', status: 'active' };
+  assert.deepEqual(allStaffPush([legacy], 'P101')[0].allowedProjects, ['P101']);
+  assert.deepEqual(stripProjectRefs([legacy], 'P101'), []);
 });

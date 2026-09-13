@@ -136,6 +136,38 @@ export function reconcileStaff(s) {
   };
 }
 
+// 任务卡「加到全员」按钮：实时比对，把该任务加进所有还没有它的未退出人员（status ≠ left）的可胜任。
+// 个人对本任务标了「不合适」的跳过（禁忌不被覆盖）；已有的人不动，故可反复点（新加入的人下次点击即补上）。
+// 返回需要落盘的记录（新对象，不改入参）；人人都有了则返回空数组。
+export function allStaffPush(staffs, projectId) {
+  const out = [];
+  for (const s of staffs) {
+    if (s.status === 'left') continue;
+    const allowed = s.allowedProjects ?? [];
+    if (allowed.includes(projectId)) continue;
+    if ((s.bannedProjects ?? []).some(b => b.projectId === projectId)) continue;
+    out.push({ ...s, allowedProjects: [...allowed, projectId] });
+  }
+  return out;
+}
+
+// 删除任务时的引用清理：把该任务从所有人员的三列表（可胜任/擅长/不合适）中摘掉，避免留下悬空 ID。
+// 只动人员配置，不碰排班记录（历史排班保持原样）。
+export function stripProjectRefs(staffs, projectId) {
+  const out = [];
+  for (const s of staffs) {
+    const allowedProjects = (s.allowedProjects ?? []).filter(id => id !== projectId);
+    const preferredProjects = (s.preferredProjects ?? []).filter(x => x.projectId !== projectId);
+    const bannedProjects = (s.bannedProjects ?? []).filter(x => x.projectId !== projectId);
+    if (allowedProjects.length !== (s.allowedProjects ?? []).length
+      || preferredProjects.length !== (s.preferredProjects ?? []).length
+      || bannedProjects.length !== (s.bannedProjects ?? []).length) {
+      out.push({ ...s, allowedProjects, preferredProjects, bannedProjects });
+    }
+  }
+  return out;
+}
+
 export function validateStaff(s) {
   const errors = problems([
     { cond: !s.name, field: 'name', msg: '姓名不能为空' },
