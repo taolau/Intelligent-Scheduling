@@ -1,7 +1,6 @@
 import html2canvas from 'html2canvas';
 import { downloadBlob } from './excel.js';
 import { toDateStr } from '../core/week.js';
-import { intensityMark } from './icons.js';
 
 function formatNow() {
   const d = new Date();
@@ -16,28 +15,10 @@ const GRID_WIDTH = 1200;
 const CARD_PAD = 22;
 const PAGE_PAD = 30;
 
-// 任务劳累刻度图例：导出内容含刻度角标（.int-mark）时，白卡底部挂一行解释——图是发给执行人的，符号含义不必靠猜
-function buildLegend(containerEl) {
-  if (!containerEl || !containerEl.querySelector('.int-mark')) return null;
-  const row = document.createElement('div');
-  row.style.cssText = `display:flex;align-items:center;gap:14px;margin-top:12px;padding-top:9px;border-top:1px solid #efe9f5;font-family:${FONT_STACK};font-size:11px;color:#8b728f;`;
-  const cap = document.createElement('span');
-  cap.style.cssText = 'color:#5a1d78;font-weight:500;';
-  cap.textContent = '任务劳累';
-  row.appendChild(cap);
-  for (const [n, label] of [[3, '高强度'], [2, '中等'], [1, '轻松']]) {
-    const item = document.createElement('span');
-    item.style.cssText = 'display:inline-flex;align-items:center;gap:5px;';
-    item.innerHTML = intensityMark(n, 7);
-    item.append(document.createTextNode(label));
-    row.appendChild(item);
-  }
-  return row;
-}
-
 // 排班图导出 PNG（周/月通用）：离屏构造「浅底画布 + 白色圆角内容卡（居中标题 + 内容克隆）」截图，原页面零扰动；
 // 内容元素由调用方传入——周 = .cal-grid 单面板，月 = .cal-month-stack 整月堆叠（含周分隔条 + 灰显邻月日）。
-// 固定宽度保证任何窗口下导出大小一致；克隆时去掉今天高亮/小旗子与功能性 UI（导出的图是长期排班表，不绑定"今天"）
+// 固定宽度保证任何窗口下导出大小一致；克隆时去掉今天高亮/小旗子、功能性 UI 与劳累强度角标
+// （导出的图是长期排班表，不绑定"今天"，也不带内部负荷符号）
 export async function exportScheduleImage(container, { filename, title, subtitle = '总览' }) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `position:absolute;left:-99999px;top:0;width:${GRID_WIDTH + CARD_PAD * 2 + PAGE_PAD * 2}px;padding:${PAGE_PAD}px;`;
@@ -68,10 +49,9 @@ export async function exportScheduleImage(container, { filename, title, subtitle
   clone.style.height = 'auto';
   clone.style.overflow = 'visible';
   clone.querySelectorAll('.cal-today').forEach(el => el.classList.remove('cal-today'));
-  clone.querySelectorAll('.cal-today-flag, .cal-add-day, .sch-smart').forEach(el => el.remove());
+  clone.querySelectorAll('.cal-today-flag, .cal-add-day, .sch-smart, .int-mark').forEach(el => el.remove());
 
-  const legend = buildLegend(container);
-  card.append(header, clone, legend);
+  card.append(header, clone);
   wrap.appendChild(card);
   document.body.appendChild(wrap);
   try {
@@ -113,8 +93,10 @@ export async function exportTaskViewImage({ list, title, metaText, filename }) {
   meta.append(left, right);
   header.append(titleEl, meta);
 
-  const legend = buildLegend(list);
-  card.append(header, list.cloneNode(true), legend);
+  // 导出图不带劳累强度角标（与排班图一致）
+  const listClone = list.cloneNode(true);
+  listClone.querySelectorAll('.int-mark').forEach(el => el.remove());
+  card.append(header, listClone);
   wrap.appendChild(card);
   document.body.appendChild(wrap);
   try {

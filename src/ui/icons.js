@@ -1,5 +1,5 @@
 // 劳累指数强度刻度：斜切小格亮 N 格 = 指数 N（1-3），全档位统一淡杏乳（只以格数区分，低存在感角标），空槽浅紫灰；
-// 屏幕与导出同构。svgH 给定 = 导出图例用内联定尺寸，缺省由 .int-mark 样式控制
+// svgH 给定 = 行内定尺寸（配置页卡片行刻度）；缺省由 .int-mark 样式控制高度
 const INTENSITY_FILL = '#f6cfaa';
 const INTENSITY_EMPTY = '#e3dbf0';
 
