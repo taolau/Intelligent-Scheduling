@@ -249,6 +249,40 @@ test('人员：可胜任填任务中文名 → 解析回 ID；不存在的任务
   assert.ok(r.message.includes('丢弃 4 个不存在的任务引用')); // 2 可胜任 + 1 擅长 + 1 不合适
 });
 
+test('人员：可胜任填「全部」→ 绑定所有启用任务（停用不含），混填其他引用不报丢弃（2026-09-13）', async () => {
+  await saveProject(createProject({ id: 'P101', name: '场地搬运' }));
+  await saveProject(createProject({ id: 'P102', name: '门口执勤' }));
+  await saveProject(createProject({ id: 'P103', name: '已停用任务', active: false }));
+  const r = await importStaffs(mkStaffFile([
+    ['张三', '', '全部', '', '', '', '', '', '', '', '', ''],
+    ['李四', '', '全部;门口执勤', '', '', '', '', '', '', '', '', ''],
+  ]));
+  assert.deepEqual(S('张三').allowedProjects.sort(), ['P101', 'P102']); // 停用任务 P103 不入
+  assert.deepEqual(S('李四').allowedProjects.sort(), ['P101', 'P102']); // 混填其他引用 = 同样全部，且不报丢弃
+  assert.ok(!r.message.includes('丢弃'));
+  assert.ok(r.message.includes('2 名人员可胜任填「全部」已绑定 2 个启用任务'));
+});
+
+test('人员：可胜任填「全部」+ 不合适冲突 → 走 reconcile 剔除冲突项（不合适优先）', async () => {
+  await saveProject(createProject({ id: 'P101', name: '搬运' }));
+  await saveProject(createProject({ id: 'P102', name: '夜巡' }));
+  await importStaffs(mkStaffFile([
+    ['张三', '', '全部', '', '夜巡(腰伤)', '', '', '', '', '', '', ''],
+  ]));
+  assert.deepEqual(S('张三').allowedProjects, ['P101']);
+  assert.deepEqual(S('张三').bannedProjects, [{ projectId: 'P102', reason: '腰伤' }]);
+});
+
+test('人员：可胜任填「全部」但库中无启用任务 → 空可胜任，不报错', async () => {
+  await saveProject(createProject({ id: 'P103', name: '已停用任务', active: false }));
+  const r = await importStaffs(mkStaffFile([
+    ['张三', '', '全部', '', '', '', '', '', '', '', '', ''],
+  ]));
+  assert.equal(r.ok, true);
+  assert.deepEqual(S('张三').allowedProjects, []);
+  assert.ok(r.message.includes('已绑定 0 个启用任务'));
+});
+
 test('人员：擅长/不合适填含括号任务名 + 原因 → 正则误拆为前缀被丢弃（不可解，钉现状）', async () => {
   // 任务名本身含括号「门(岗)执勤」：导出侧已回退 ID（见 excel.test.js），但用户手填「门(岗)执勤(原因)」无解
   await saveProject(createProject({ id: 'P102', name: '门(岗)执勤' }));

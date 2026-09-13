@@ -24,7 +24,7 @@ export const PROJECT_BASE_COLS = [
 export const STAFF_BASE_COLS = [
   '姓名(必填)',
   '状态(新入/活跃/休假/已退出,默认活跃)',
-  '可胜任任务(分号隔开)',
+  '可胜任任务(分号隔开;填「全部」=绑定所有启用任务)',
   '擅长任务(任务(原因),分号隔开)',
   '不合适任务(任务(原因),分号隔开)',
   '标签(分号隔开,可多个)',
@@ -45,6 +45,9 @@ const STAFF_SAMPLE = ['【示例】张三', '新入', '场地搬运;门口执勤
 
 const STATUS_ALIAS = { '新入': 'new', '活跃': 'active', '休假': 'rest', '已退出': 'left' };
 const STATUS_REV = { new: '新入', active: '活跃', rest: '休假', left: '已退出' };
+
+// 可胜任列关键字：整格填「全部」= 绑定导入时刻所有启用任务，不作任务名解析
+const ALL_TASKS_KEYWORD = '全部';
 
 // 上限列解析：空 → undefined（走系统设置默认）；非空数字 → 数值（0 合法：禁排高强度/禁排整月）；非法 → undefined
 function parseNumOrUndef(v) {
@@ -342,6 +345,7 @@ const STAFF_KEY_ALIAS = {
   '可胜任项目(必填;分号隔开)': '可胜任任务(必填;分号隔开)',
   '可胜任任务': '可胜任任务(必填;分号隔开)',
   '可胜任任务(分号隔开)': '可胜任任务(必填;分号隔开)',
+  '可胜任任务(分号隔开;填「全部」=绑定所有启用任务)': '可胜任任务(必填;分号隔开)',
   '擅长项目(项目(原因);分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
   '擅长项目(选填;项目(原因),分号隔开)': '擅长任务(选填;任务(原因),分号隔开)',
   '擅长任务': '擅长任务(选填;任务(原因),分号隔开)',
@@ -430,9 +434,10 @@ export async function importStaffs(file) {
     const projectIds = new Set(projects.map(p => p.id));
     const projectNames = new Map(projects.map(p => [p.name.trim(), p.id]));
     const resolve = ref => resolveProjectRef(ref, projectIds, projectNames);
+    const activeProjectIds = projects.filter(p => p.active).map(p => p.id);
     const byName = new Map(staffs.map(s => [s.name.trim(), s]));
     const byId = new Map(staffs.map(s => [s.id, s]));
-    let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0, droppedRefs = 0, statusFixed = 0, limitFixed = 0;
+    let added = 0, updated = 0, skipped = 0, reconciled = 0, skippedAvailability = 0, droppedRefs = 0, statusFixed = 0, limitFixed = 0, allBound = 0;
     const seenIds = new Set();
     const settings = getSettings();
     for (const r of rows) {
@@ -469,10 +474,17 @@ export async function importStaffs(file) {
         if (lims[k] !== undefined && lims[k] < 0) { limitFixed++; lims[k] = undefined; }
       }
       // 三列表解析：任务引用（ID/中文名）解析失败改为计数提示（对齐加分标签的「丢弃 N」）
+      // 可胜任列支持关键字「全部」= 绑定导入时刻全库启用的任务（快照，后续新建任务不自动追加）
       const allowedProjects = [];
-      for (const ref of parseList(r['可胜任任务(必填;分号隔开)'])) {
-        const id = resolve(ref);
-        if (id) allowedProjects.push(id); else droppedRefs++;
+      const allowedRefs = parseList(r['可胜任任务(必填;分号隔开)']);
+      if (allowedRefs.includes(ALL_TASKS_KEYWORD)) {
+        allowedProjects.push(...activeProjectIds);
+        allBound++;
+      } else {
+        for (const ref of allowedRefs) {
+          const id = resolve(ref);
+          if (id) allowedProjects.push(id); else droppedRefs++;
+        }
       }
       const preferredProjects = [];
       for (const e of parsePref(r['擅长任务(选填;任务(原因),分号隔开)'])) {
@@ -519,7 +531,8 @@ export async function importStaffs(file) {
     const statusNote = statusFixed ? `，${statusFixed} 名状态无法识别已按活跃` : '';
     const limitNote = limitFixed ? `，${limitFixed} 处上限为负已按默认` : '';
     const availNote = skippedAvailability ? `，跳过 ${skippedAvailability} 条时间安排配置错误` : '';
-    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}${refsNote}${statusNote}${limitNote}${availNote}` };
+    const allNote = allBound ? `，${allBound} 名人员可胜任填「全部」已绑定 ${activeProjectIds.length} 个启用任务` : '';
+    return { ok: true, message: `导入 ${added + updated} 名人员${skipped ? `（跳过 ${skipped} 条空姓名）` : ''}：新增 ${added}、更新 ${updated}${fixNote}${refsNote}${statusNote}${limitNote}${availNote}${allNote}` };
   } catch (e) {
     return { ok: false, message: `人员导入失败：${e.message}` };
   }
