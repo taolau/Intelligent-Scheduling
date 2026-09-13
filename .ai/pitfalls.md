@@ -366,3 +366,10 @@
 - **解决**：不可解（程序无法区分「任务名自带的括号」与「原因分隔括号」），现状即正确行为——纯引用列（可胜任）走全文本 Map 查找不受影响；带原因列（擅长/不合适）靠**导出侧智能回退**自保：`buildStaffsAoa` 对名含括号的任务引用导出 ID（安全名），保证导出→重导入不丢；手填此类名称丢弃属预期，回归断言钉住（见 excel-import.test.js「含括号任务名作擅长」条）
 - **启示**：凡「名(备注)」双列格式，当受控词表（任务/人员名）允许含括号时解析必歧义——设计上让 ID 兜底或干脆禁止名称含括号；保真责任放导出侧（它知道完整任务表），别指望导入侧一个正则变聪明
 
+## 45. 换依赖后本地 node_modules 未同步：Vite import-analysis 报「Cannot find package」拒掉整页，报错却指向业务代码
+
+- **报错**：dev server 页面全白，控制台 `Plugin: vite:import-analysis` + 无法解析 `'xlsx-js-style'`（imported from `src/ui/excel.js`），堆栈落在 excel.js 的 import 行
+- **场景**：09-09 把 SheetJS 官方包换成 xlsx-js-style fork（package.json 改了），本机 node_modules 仍是旧的（只有 `xlsx`、没有 `xlsx-js-style`）；启动 dev server / 页面加载即报，看着像 excel.js 的 import 路径写错
+- **根因**：Vite 在**转换期**解析静态 import，解析不到包就让该模块转换失败 → 依赖它的整条模块链挂掉（白屏）；报错文本带业务文件路径与行号，极易被误读成「代码问题」
+- **解决**：`npm install` 补齐依赖后重启 dev server（若仍 ENOENT/504，清 `node_modules/.vite`，见 #40）。判定动作 = 先 `ls node_modules/<包名>` 确认包在不在盘上，再谈代码；同一份源码被 node 单测与浏览器共用时，`npm test` 会先一步暴露缺包（本次即 2 个 excel 测试先报 `ERR_MODULE_NOT_FOUND`）
+- **启示**：「模块解析失败」先分两类根因——①包没装（node_modules 缺）②包在但路径/导出名不对（才是代码问题）；报错指向业务文件 ≠ 业务文件有错。凡改过 package.json（换包/加依赖），本地必须同步 install，别拿旧 node_modules 跑新代码
