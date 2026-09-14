@@ -19,7 +19,7 @@ const css = `
 /* ===== 按钮 ===== */
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px;
   border:1px solid transparent; border-radius:8px; padding:8px 14px; font-size:14px;
-  font-weight:500; line-height:1.2; cursor:pointer; user-select:none;
+  font-weight:500; line-height:1.2; cursor:pointer; user-select:none; white-space:nowrap;
   transition:background-color .15s,border-color .15s,box-shadow .15s,color .15s,transform .15s; }
 .btn:disabled { opacity:.5; cursor:not-allowed; box-shadow:none; transform:none; }
 .btn:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(90,29,120,.14); }
@@ -562,7 +562,10 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cfg-tag-sel { flex:none; width:190px; }
 
 /* ===== 配置页卡片网格 ===== */
-.card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(288px,1fr)); gap:12px; align-items:stretch; }
+/* 卡片最小宽 360：要能一行放下「开关 + 加到全员/删除/编辑」三个带图标按钮——实测该行需 314px 内容宽
+   （开关 67 + 间距 8 + 按钮组 239），360 列宽给出 326px 内容宽、余量 12px。低于此值按钮会折行，
+   中文按钮与开关标签会被 flex 压成一字宽的竖排（中文任意两字间可断行，最小内容宽 = 一个字） */
+.card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:12px; align-items:stretch; }
 .cfg-card { display:flex; flex-direction:column; gap:10px; }
 .cfg-card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .cfg-card-title { font-size:15px; font-weight:600; color:#241f2e; word-break:break-all; }
@@ -579,7 +582,8 @@ body { display:flex; height:100vh; overflow:hidden; }
 .cfg-row .v-text { display:inline-block; line-height:1.5; word-break:break-all; }
 textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 .cfg-card-ops { margin-top:auto; display:flex; justify-content:space-between; align-items:center; gap:8px; padding-top:2px; }
-.cfg-op-btns { display:flex; align-items:center; gap:6px; }
+/* 卡片脚注按钮组：挤不下时整组折行、右对齐（勿把按钮压成一字宽的中文竖排，见 .btn 的 nowrap） */
+.cfg-op-btns { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
 .grid-empty { padding:28px; text-align:center; color:#9b91a7; font-size:14px; }
 
 /* ===== 任务视图（任务说明清单：名称+时间安排+说明三区段，供导出图片）===== */
@@ -669,7 +673,7 @@ textarea.input { resize:vertical; min-height:64px; line-height:1.5; }
 }
 
 /* ===== 开关 ===== */
-.switch-wrap { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:#6a6178; cursor:pointer; user-select:none; }
+.switch-wrap { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:#6a6178; cursor:pointer; user-select:none; flex-shrink:0; white-space:nowrap; }
 .switch-wrap:hover .switch-label { color:#5a1d78; }
 .switch { position:relative; display:inline-flex; width:34px; height:20px; flex-shrink:0; }
 .switch input { position:absolute; inset:0; margin:0; opacity:0; cursor:pointer; z-index:1; }
