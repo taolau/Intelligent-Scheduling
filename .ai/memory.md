@@ -4,26 +4,30 @@
 # [规则] 重点标注 Tao 的进度。
 
 ## 📍 当前状态
-- **09-14 批次已提交（功能批 `da19aad`，本条 [记忆] 提交紧随其后）**
-  - 任务卡排序改 `createdAt` 倒序（**新建在前**，同人员卡 `joinedAt` 规则）；**任务视图与其导出图共用同一序**（统一，Tao 拍板）；Excel 更新同名任务保留原 `createdAt`
-  - 任务卡「加到全员」加 `confirmDialog` 二次确认（非破坏性 → 淡紫 `btn-soft`；**无人可加时不弹窗**、直接 toast 提示）
-  - 「可胜任之外全部设为不合适」反选钮改 `setRows` 整组重建：不再残留被跳过的默认空白行（Tao 实测反馈）
-- **测试**：`npm test` 247/247 全绿（本会话新增 3 条：model `createdAt` 1 条、excel 保留原戳记 2 条）
-- **dist**：已按 Tao 要求构建 `dist/Numbers.html`（09-14 17:59，2.3M，含上述全部改动；dist 不入 git）
-- **push 待办**：本次两笔提交仅在本地，远程 `origin/main` 尚未收到——09-14 本机连不上 github.com:443，网络恢复后需 `git fetch` → `git log origin/main..main` → `git push`
+- **09-14 全部已提交并推送（工作区干净）**：`da19aad` 功能批（任务卡 createdAt 倒序 / 加到全员二次确认 / 反选钮空行）→ `b7f339f` 记忆批 → `7dab580` README + 删调试截图 → `164ad36` 卡片脚注中文竖排修复
+- **GitHub 仓库已"正式化"**（`taolau/Intelligent-Scheduling`，Tao 拍板）：README 上线；仓库描述重写 + 8 个 topics；正式版 **v1.0.0** 发布（附件 = `dist/Numbers.html`），旧 Release/tag `v1` 已删
+  - ⚠️ 遗留：tag `v1.0.0` 仍指向 `7dab580`，而附件是 `164ad36` 构建的（源码 zip 与附件不同源）——**是否 force 移 tag 待 Tao 决定**，我未擅自动
+- **工具就绪**：gh CLI 2.100.0 已装（`C:\Program Files\GitHub CLI\gh.exe`）+ 已授权（凭据在系统 keyring，账号 taolau）
+  - 发版：`gh release create vX.Y.Z dist/Numbers.html --title vX.Y.Z --notes-file <md>`
+  - 换包：`gh release upload vX.Y.Z dist/Numbers.html --clobber`
+- **测试**：`npm test` 247/247 全绿
+- **dist**：`dist/Numbers.html` = `164ad36` 构建（2.25M），已作为 v1.0.0 附件上传（dist 不入 git）
 
 ## 🧠 核心决策
-> 已入 spec 正文的定稿（任务卡排序、加到全员二次确认、任务视图顺序）不在此重复，spec 为最终载体。此处只留跨会话方法论经验。
+> 已入 spec 正文的定稿不在此重复，spec 为最终载体。此处只留跨会话方法论经验。
 
+- **发布流程（09-14 定）**：正式版 = GitHub Release + 单文件附件 `Numbers.html`；**小修不升版本号**，重构建后 `gh release upload --clobber` 原地换包（Tao 拍板「打最新包替换」）。顺序恒为「先 push 源码 → 再换附件」，保证源码与附件同源。
 - **需求语义先收敛再动手（09-13 定，09-14 复用有效）**：Tao 的「给任务加个全员设置」曾经历三轮返工——①任务字段+筛选虚拟放行 ②快照推送+「移出全员」撤销 ③**纯动作按钮、无状态标记**（最终）。根因：我把「设置」默认理解成常驻字段，而 Tao 要的是一次性便捷动作。**09-14 复用**：本次「新增任务放在前面」有「卡片排序」与「按钮位置」两种读法，先问一句即命中，零返工。**遇到指代不清的 UI 需求，先问再写**；Tao 的验收方式是「看到实现再定语义」，所以先给最小可见实现、别一次性铺满。
 - **测试数据红线锚定法（防反复）**：3 分任务每周人次 > 团队高强配额时自动铺排必超限 → 锚点周任务手动逐班指定、红线人物从自动池剔除、未来周超限噪点留给领导当调整素材（脚本内已注释）。
-- **Playwright 验证法（UI 回归复用）**：toast 记录型 MutationObserver（`window.__toasts` 持续记录 .toast 新增，绕开 2.5s 移除竞态）；注入测试数据前先整库备份到 localStorage 临时 key（跨 reload 存活，测完还原再删 key）；round-trip 直取 Playwright 落盘下载产物（`.playwright-mcp/` 已忽略）回传验证。UI 全链路回归路径 = 批量铺排 → 智能排班 → 手动建班 → 分配弹窗（拒因区）→ 替换（点行二次确认）→ 批量删除（多选态）。
+- **Playwright 验证法（UI 回归复用）**：toast 记录型 MutationObserver（`window.__toasts` 持续记录 .toast 新增，绕开 2.5s 移除竞态）；注入测试数据前先整库备份到 localStorage 临时 key（跨 reload 存活，测完还原再删 key）；round-trip 直取 Playwright 落盘下载产物（`.playwright-mcp/` 已忽略）回传验证。**极限值实测**：布局类问题把容器尺寸钉死在临界值再量（如 `grid.style.gridTemplateColumns='360px'`），比拖窗口碰运气可靠。UI 全链路回归路径 = 批量铺排 → 智能排班 → 手动建班 → 分配弹窗（拒因区）→ 替换（点行二次确认）→ 批量删除（多选态）。
 
 ## ⚠️ 待办与注意
-- **待办**：网络恢复后 push 本次两笔提交（本地领先 `origin/main` 两笔）
+- **待办**：tag `v1.0.0` 与附件不同源（见上）——Tao 决定是否 force 移 tag；不动则下次发版自然对齐
 - 注意：**存档写「已提交」前先实测 `git status`**（09-14 教训：memory 写「已提交、工作区干净」，实际 7 个文件仍躺在工作区，Tao 发现后纠正）
 - 注意：任务卡排序依赖 `createdAt`——**09-14 前存档的任务无此字段 → 一律视为 0、整体排在新建任务之后**（首次打开会看到列表重排，属预期而非 bug）；新增消费「任务顺序」的代码一律 `(x.createdAt ?? 0)` 兜底，勿用 `||`（0 是合法兜底值）
 - 注意：`allStaff` 字段已从 Project 彻底移除（三轮返工定稿为纯动作）——若在历史数据/旧备份里见到它，忽略即可，**勿再引入**；「加到全员」的效果只落在各人 `allowedProjects` 上
 - 注意：任务删除口径 = **有排班记录才拦**（铺排过空壳班次也算），人员配置引用不再阻止删除（Tao 09-13 拍板「先这样」）。未来若改成「只拦未来班次」记得同步 spec 5.1
 - 注意：filter.js 已逐键兜底（`daily/slotTaskLimit`），未来新增消费 settings 的规则代码一律逐键 `?? DEFAULT`（#28 教训，勿整体解构）
 - 注意：动态行编辑器（`rowsEditor`）首次展开的空白行是**占位行**——批量灌数据（反选/一键填充类）勿用 `add()` 追加（只往末尾加、会跳过空行留下残行），统一「先 `collect()` 滤掉空行 + `setRows()` 整组重建」（09-14 反选钮修复）
+- 注意：**卡片脚注那一行的宽度是一笔算好的账**——「开关 + 加到全员/删除/编辑」需 314px，故 `.card-grid` 最小列宽定为 360px（余量仅 12px）。以后往那行加按钮/加长文案必须同步复核该最小值（细节见 pitfalls #46）
+- 注意：gh 是 09-14 新装的，**已开着的终端不认 PATH**（新开窗口才认）——脚本里一律用全路径 `C:\Program Files\GitHub CLI\gh.exe`
