@@ -413,8 +413,11 @@ export async function importProjects(file) {
         active: String(r['启用(选填;1=启用,0=禁用,默认1)'] ?? '1').trim() !== '0', // 值先 trim：' 0 ' 视为 0
       };
       // 同名或同 ID 覆盖（保留原 ID 保引用），否则新增；文件内多行同名后者覆盖前者（同 id 只计一次）
+      // 更新保留原 createdAt（旧数据无戳记 → 0，留在原序），免得改个名字就跳到卡片最前
       const existing = (r['ID'] && byId.get(r['ID'])) || byName.get(name);
-      const rec = existing ? createProject({ ...fields, id: existing.id }) : createProject(fields);
+      const rec = existing
+        ? createProject({ ...fields, id: existing.id, createdAt: existing.createdAt ?? 0 })
+        : createProject(fields);
       await saveProject(rec);
       byName.set(name, rec);
       if (!seenIds.has(rec.id)) { seenIds.add(rec.id); existing ? updated++ : added++; }

@@ -267,6 +267,14 @@ test('createProject 保留传入 bonusTags', () => {
   assert.deepEqual(p.bonusTags, ['组长']);
 });
 
+test('createProject 带 createdAt：新建取当前时间戳，显式传入（含 0 = 旧数据兜底值）原样保留', () => {
+  const p = createProject({ name: 'X' });
+  assert.equal(typeof p.createdAt, 'number');
+  assert.ok(p.createdAt > 0);
+  assert.equal(createProject({ name: 'Y', createdAt: 111 }).createdAt, 111);
+  assert.equal(createProject({ name: 'Z', createdAt: 0 }).createdAt, 0); // 0 非 nullish，不被 Date.now() 顶掉
+});
+
 test('DEFAULT_SETTINGS 含新键：defaultMonthlyFatigue=40、tenureLimit=3', () => {
   assert.equal(DEFAULT_SETTINGS.defaultMonthlyFatigue, 40);
   assert.equal(DEFAULT_SETTINGS.tenureLimit, 3);

@@ -82,6 +82,20 @@ test('任务：同名已存在 → 覆盖更新保留原 id（引用安全），
   assert.equal(getCache().projects.length, 1); // 不新增
 });
 
+test('任务：同名更新保留原 createdAt（改内容不跳成「新建」顶到卡片最前）', async () => {
+  await saveProject(createProject({ id: 'P-OLD', name: '搬运', createdAt: 111 }));
+  await importProjects(mkProjectFile([['搬运', '1', '1', '4', '', '早', '', '', '', '改内容']]));
+  assert.equal(P('搬运').createdAt, 111);
+});
+
+test('任务：旧数据（无 createdAt）被 Excel 更新 → 保持 0，不被当成新建', async () => {
+  const legacy = createProject({ id: 'P-LEG', name: '老任务' });
+  delete legacy.createdAt; // 模拟 09-14 之前存档的任务
+  await saveProject(legacy);
+  await importProjects(mkProjectFile([['老任务', '1', '1', '1', '', '早', '', '', '', '']]));
+  assert.equal(P('老任务').createdAt, 0);
+});
+
 test('任务：旧含 ID 文件 + 旧表头别名兜底 → 按 ID 覆盖更新，新列补默认', async () => {
   const orig = createProject({ id: 'P101', name: '旧名', fatigueScore: 3, requiredCapacity: 2, weekDays: [0], slots: [{ label: '早' }] });
   await saveProject(orig);

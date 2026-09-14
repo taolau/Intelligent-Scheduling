@@ -642,13 +642,15 @@ async function editStaffDialog(staff) {
   const allowedLab = allowedF.wrap.querySelector('label');
   const fillBannedBtn = makeFillBtn('可胜任之外全部设为不合适', () => {
     const allowed = new Set(allowedSel.value);
-    const existing = new Set(bannedEditor.collect().map(b => b.projectId));
+    const kept = bannedEditor.collect().filter(b => b.projectId); // 顺手丢掉默认/多余的空白行（下面整组重建，空行被"用掉"不留残行）
+    const existing = new Set(kept.map(b => b.projectId));
     const missing = projects.map(p => p.id).filter(id => !allowed.has(id) && !existing.has(id));
     if (!missing.length) {
       showToast('不合适任务已是最全状态', 'info');
       return;
     }
-    missing.forEach(id => bannedEditor.add({ projectId: id, reason: '' }));
+    // 整组重建而非 add 追加：add 只往末尾加行、会跳过已展开的空白行，视觉上残留一行空行
+    bannedEditor.setRows([...kept, ...missing.map(id => ({ projectId: id, reason: '' }))]);
     showToast(`已追加 ${missing.length} 个不合适任务，可逐行补充原因`, 'success');
   });
   const allowedLabRow = document.createElement('div');
@@ -772,6 +774,9 @@ async function renderProjects(head, scroll) {
   head.innerHTML = '';
   scroll.innerHTML = '';
   const { projects } = getCache();
+  // 任务排序：新建在前（与人员卡 joinedAt 同规则）；旧任务无 createdAt 视为 0，同值靠 sort 稳定性保持原序。
+  // 卡片网格与「任务视图」（含其导出图）共用此序，两处展示一致
+  const sorted = [...projects].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   const actions = document.createElement('div');
   actions.className = 'cfg-actions';
   const search = searchControl('筛选任务名称');
@@ -782,7 +787,7 @@ async function renderProjects(head, scroll) {
   addBtn.onclick = () => editProjectDialog();
   importBtn.onclick = () => importDialog({ title: '导入任务', handler: importProjects, template: downloadProjectTemplate });
   exportBtn.onclick = () => exportProjects();
-  viewBtn.onclick = () => renderProjectView(head, scroll, projects);
+  viewBtn.onclick = () => renderProjectView(head, scroll, sorted);
   actions.append(search, addBtn, importBtn, exportBtn, viewBtn);
   head.appendChild(actions);
 
@@ -792,7 +797,7 @@ async function renderProjects(head, scroll) {
     grid.innerHTML = '<div class="grid-empty">暂无任务，点击「新增任务」添加</div>';
     grid.firstChild.style.gridColumn = '1 / -1';
   }
-  for (const p of projects) {
+  for (const p of sorted) {
     const week = p.weekDays.length ? p.weekDays.map(d => ['日','一','二','三','四','五','六'][d]).join('、') : '一次性';
     const slots = [...p.slots]
       .sort((a, b) => SLOT_ORDER.get(a.label) - SLOT_ORDER.get(b.label))
@@ -960,10 +965,23 @@ function taskViewTimeHTML(p) {
 
 // 「加到全员」＝实时比对后把任务加给还没有它的未退出人员（model.allStaffPush），个人「不合适」跳过。
 // 纯动作、无状态：不记标记、不改按钮文案，反复点只为把之后新加入的人补上。
+// 批量改多人 → 先 confirmDialog 二次确认（非破坏性变更，确认钮淡紫）；无人可加时不弹窗、直接提示
 async function applyAllStaff(p) {
   const changed = allStaffPush(getCache().staffs, p.id);
-  for (const s of changed) await saveStaff(s);
-  showToast(changed.length ? `已把「${p.name}」加给 ${changed.length} 人` : `所有人都已可胜任「${p.name}」，无需添加`, 'success');
+  if (!changed.length) {
+    showToast(`所有人都已可胜任「${p.name}」，无需添加`, 'info');
+    return;
+  }
+  confirmDialog({
+    title: '确认加到全员',
+    message: `确认把「${p.name}」加给还没有它的 ${changed.length} 人？已标「不合适」的会跳过。`,
+    confirmText: '确认添加',
+    okClass: 'btn-soft',
+    onConfirm: async () => {
+      for (const s of changed) await saveStaff(s);
+      showToast(`已把「${p.name}」加给 ${changed.length} 人`, 'success');
+    },
+  });
 }
 
 async function editProjectDialog(project) {

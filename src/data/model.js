@@ -30,6 +30,7 @@ export function createProject(fields = {}) {
     active: fields.active ?? true,
     timeRange: fields.timeRange ?? null, // 选填执行窗口 {start,end} HH:mm，仅展示不参与算法
     bonusTags: fields.bonusTags ?? [],   // 加分标签（引用人员标签池文本，命中即加分）
+    createdAt: fields.createdAt ?? Date.now(), // 创建时间戳，卡片排序用（新建在前）；旧数据无此字段按 0 处理
   };
 }
 
